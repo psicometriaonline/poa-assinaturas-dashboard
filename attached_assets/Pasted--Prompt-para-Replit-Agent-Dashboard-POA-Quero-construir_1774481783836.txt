@@ -1,0 +1,256 @@
+# Prompt para Replit Agent — Dashboard POA
+
+Quero construir um monorepo com dois sistemas integrados:
+
+1. **Umami** (analytics de web) — já tenho o código no GitHub em
+   `https://github.com/psicometriaonline/dashboard-produto`
+   Precisa clonar esse repositório, inspecionar a stack (package.json, schema do banco, .env.example), instalar as dependências, configurar o banco de dados e subir o servidor do Umami funcionando. Após subir, gerar um API token de acesso.
+
+2. **Dashboard POA** — um novo app React + Node.js/Express que consome dados de três fontes (Hotmart, Active Campaign e Umami) e exibe um dashboard estratégico de assinaturas para reuniões de sócios.
+
+---
+
+## ESTRUTURA DO MONOREPO
+
+```
+/
+├── umami/                        ← repositório clonado do GitHub acima
+└── dashboard/
+    ├── server/
+    │   ├── index.js
+    │   ├── sources/
+    │   │   ├── hotmart.js
+    │   │   ├── activecampaign.js
+    │   │   └── umami.js
+    │   └── metrics/
+    │       ├── revenue.js
+    │       ├── churn.js
+    │       ├── conversion.js
+    │       └── acquisition.js
+    └── client/
+        ├── src/
+        │   ├── pages/
+        │   │   ├── Overview.jsx
+        │   │   ├── Revenue.jsx
+        │   │   ├── Churn.jsx
+        │   │   └── Funnel.jsx
+        │   └── components/
+        │       ├── KPICard.jsx
+        │       ├── LineChart.jsx
+        │       ├── BarChart.jsx
+        │       └── DonutChart.jsx
+        └── package.json
+```
+
+---
+
+## VARIÁVEIS DE AMBIENTE
+
+Criar um arquivo `.env` na raiz com os seguintes campos (valores em branco — serão preenchidos manualmente):
+
+```env
+# Hotmart
+HOTMART_CLIENT_ID=
+HOTMART_CLIENT_SECRET=
+HOTMART_BASE_URL=https://developers.hotmart.com/payments/api/v1
+
+# Active Campaign
+AC_API_KEY=
+AC_BASE_URL=
+
+# Umami (preencher após subir o servidor do Umami)
+UMAMI_BASE_URL=http://localhost:3001
+UMAMI_API_TOKEN=
+UMAMI_WEBSITE_ID=
+```
+
+---
+
+## BACKEND — O QUE CADA ARQUIVO DEVE FAZER
+
+### `server/sources/hotmart.js`
+
+Conectar na API da Hotmart usando OAuth2 (client_credentials).
+Implementar as seguintes funções:
+
+- `getSubscriptions(status, startDate, endDate)` — lista assinaturas filtrando por status: `ACTIVE`, `CANCELLED`, `OVERDUE`, `INACTIVE`
+- `getTransactions(startDate, endDate)` — lista transações do período
+- `getProductList()` — lista produtos/planos disponíveis
+
+---
+
+### `server/sources/activecampaign.js`
+
+Conectar na API REST do Active Campaign (header `Api-Token`).
+Implementar as seguintes funções:
+
+- `getContacts(createdAfter, createdBefore)` — lista contatos criados no período, incluindo campos customizados (UTM source, UTM medium, UTM campaign) e tags
+- `getContactTags(contactId)` — retorna tags de um contato
+- `getTagList()` — lista todas as tags disponíveis
+- `getContactsByTag(tagName)` — retorna todos os contatos com uma tag específica
+
+---
+
+### `server/sources/umami.js`
+
+Conectar na API do Umami local (bearer token).
+Implementar as seguintes funções:
+
+- `getWebsiteStats(startAt, endAt)` — pageviews, visitantes únicos, bounce rate, duração média
+- `getPageViews(startAt, endAt)` — tráfego por página
+- `getReferrers(startAt, endAt)` — fontes de tráfego / referrers
+- `getUtmSources(startAt, endAt)` — breakdown por UTM source
+
+---
+
+### `server/metrics/revenue.js`
+
+Calcular a partir dos dados da Hotmart:
+
+- MRR atual (soma das assinaturas `ACTIVE` no mês corrente)
+- MRR histórico (mês a mês dos últimos 12 meses)
+- ARR projetado (MRR atual × 12)
+- ARPU (MRR / total de assinantes ativos)
+- Breakdown de receita por plano/produto
+- Receita total acumulada no período
+
+---
+
+### `server/metrics/churn.js`
+
+Calcular a partir dos dados da Hotmart:
+
+- Total de cancelamentos no mês
+- Churn voluntário: status `CANCELLED` com motivo de cancelamento solicitado pelo cliente
+- Churn por inadimplência: status `OVERDUE` ou `INACTIVE` por falha de pagamento
+- Churn rate % = cancelamentos / assinantes no início do mês
+- Histórico de churn mês a mês
+
+---
+
+### `server/metrics/conversion.js`
+
+Calcular cruzando Active Campaign (contatos + tags):
+
+- Total de cadastros gratuitos no período
+- Total de conversões (contatos que receberam tag de assinante)
+- Taxa de conversão % = convertidos / cadastrados
+- Tempo médio até conversão em dias = média de (data da tag − data de criação do contato) para todos os convertidos
+- Distribuição do tempo de conversão em faixas: 0–7 dias, 8–14 dias, 15–30 dias, +30 dias
+- Taxa de conversão por canal (agrupado pelo campo UTM source do contato no AC)
+
+---
+
+### `server/metrics/acquisition.js`
+
+Calcular a partir do Active Campaign (campos UTM) e Umami:
+
+- Volume de cadastros por UTM source no período
+- Volume de tráfego por canal (Umami referrers)
+
+---
+
+### `server/index.js`
+
+Servidor Express na porta `4000` com os seguintes endpoints:
+
+| Endpoint | Retorno |
+|---|---|
+| `GET /api/metrics/overview` | MRR atual, novos assinantes no mês, cancelamentos no mês, churn rate %, total de cadastros gratuitos, taxa de conversão %, tempo médio de conversão em dias |
+| `GET /api/metrics/revenue?start=YYYY-MM-DD&end=YYYY-MM-DD` | Série histórica de MRR, ARR, ARPU, breakdown por plano |
+| `GET /api/metrics/churn?start=YYYY-MM-DD&end=YYYY-MM-DD` | Série histórica de churn total, voluntário e por inadimplência, motivos se disponíveis |
+| `GET /api/metrics/funnel?start=YYYY-MM-DD&end=YYYY-MM-DD` | Cadastros, conversões, taxa de conversão, tempo médio, distribuição por faixas, breakdown por canal UTM |
+| `GET /api/metrics/acquisition?start=YYYY-MM-DD&end=YYYY-MM-DD` | Cadastros e tráfego por canal de aquisição |
+
+Todos os endpoints devem ter **cache em memória de 1 hora** para não sobrecarregar as APIs externas.
+
+---
+
+## FRONTEND — TELAS E COMPONENTES
+
+### Configuração geral
+
+- React 18 + Vite
+- Recharts para todos os gráficos
+- Tailwind CSS para estilo
+- Sidebar de navegação entre as 4 páginas
+- Seletor de período global (Este mês / Últimos 3 meses / Últimos 6 meses / Últimos 12 meses) que atualiza todos os dados simultaneamente
+- Paleta de cores:
+  - Fundo: `#0f172a`
+  - Cards: `#1e293b`
+  - Azul primário: `#3b82f6`
+  - Verde: `#22c55e`
+  - Vermelho: `#ef4444`
+  - Amarelo: `#eab308`
+
+---
+
+### `KPICard.jsx`
+
+Card reutilizável com:
+- Título
+- Valor principal em destaque
+- Variação percentual em relação ao período anterior (seta verde para positivo, vermelha para negativo)
+- Subtítulo opcional
+
+---
+
+### Página: Overview (rota `/`)
+
+**6 KPI cards no topo:**
+- MRR Atual (com variação vs. mês anterior)
+- Novos Assinantes no Mês
+- Cancelamentos no Mês
+- Churn Rate %
+- Taxa de Conversão Cadastro → Pago %
+- Tempo Médio de Conversão (em dias)
+
+**Abaixo dos cards:**
+- Gráfico de linha: evolução do MRR histórico (12 meses)
+
+---
+
+### Página: Revenue (rota `/revenue`)
+
+- KPI cards: MRR, ARR, ARPU
+- Gráfico de linha: evolução do MRR mês a mês
+- Gráfico de barras empilhadas: receita por plano mês a mês
+- Tabela: breakdown atual por plano (nome, assinantes, receita, %)
+
+---
+
+### Página: Churn (rota `/churn`)
+
+- KPI cards: total cancelamentos, churn voluntário, churn por inadimplência, churn rate %
+- Gráfico de barras agrupadas: churn voluntário vs. inadimplência mês a mês
+- Gráfico de donut: proporção dos tipos de churn no período selecionado
+- Tabela: evolução mensal com totais
+
+---
+
+### Página: Funil (rota `/funnel`)
+
+- KPI cards: cadastros gratuitos, conversões, taxa de conversão %, tempo médio em dias
+- Gráfico de barras: cadastros vs. conversões mês a mês
+- Gráfico de barras horizontais: taxa de conversão por canal UTM
+- Gráfico de barras: distribuição do tempo de conversão por faixas (0–7d, 8–14d, 15–30d, +30d)
+
+---
+
+## INSTRUÇÕES ADICIONAIS
+
+1. **Idioma:** comentários e labels da interface em português; variáveis e funções em inglês.
+
+2. **Tratamento de erro:** quando uma API externa falhar, o endpoint deve retornar `{ error: true, message: "...", data: null }` e a interface deve mostrar um estado de erro por card/seção individualmente, sem quebrar toda a tela.
+
+3. **Formatação monetária:** todos os valores em Real brasileiro (R$ 1.234,56).
+
+4. **Formatação de datas:** exibir em pt-BR (Jan 2025, Fev 2025, etc.).
+
+5. **Portas:**
+   - Umami: `3001`
+   - Dashboard backend (Express): `4000`
+   - Dashboard frontend (Vite): `5173`
+   - Configurar proxy no Vite para `/api` apontar para `localhost:4000`
+
+6. **Ao finalizar:** mostrar a URL de acesso ao dashboard e ao painel do Umami separadamente.
