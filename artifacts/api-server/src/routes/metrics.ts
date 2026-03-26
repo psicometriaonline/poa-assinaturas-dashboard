@@ -41,96 +41,61 @@ router.get("/overview", async (req: Request, res: Response) => {
     const data = await withCache(cacheKey, async () => {
       const now = new Date();
       const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-      const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-      const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const prevMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
 
-      const startTs = monthStart.getTime();
-      const endTs = monthEnd.getTime();
-      const prevStartTs = prevMonthStart.getTime();
-      const prevEndTs = prevMonthEnd.getTime();
+      // --- Dados reais: apenas DB (planilha importada + webhooks) ---
+      const CANCELLATION_EVENTS = [
+        "SUBSCRIPTION_CANCELLATION",
+        "PURCHASE_CANCELED",
+        "PURCHASE_REFUNDED",
+        "PURCHASE_CHARGEBACK",
+        "PURCHASE_EXPIRED",
+      ];
 
-      const [
-        activeNow,
-        newThisMonth,
-        activePrev,
-        allCancelled,
-        allDelayed,
-        allInactive,
-        contactsThisMonth,
-        dbSummary,
-        dbSummaryPrev,
-      ] = await Promise.all([
-        getAllActiveSubscriptions(),
-        getSubscriptions("ACTIVE", startTs, endTs),
-        getSubscriptions("ACTIVE", prevStartTs, prevEndTs),
-        getAllSubscriptionsByStatus("CANCELLED"),
-        getAllSubscriptionsByStatus("DELAYED"),
-        getAllSubscriptionsByStatus("INACTIVE"),
-        getContacts(monthStart.toISOString(), monthEnd.toISOString()),
-        getDbSubscriptionSummary(startTs, endTs).catch(() => null),
-        getDbSubscriptionSummary(prevStartTs, prevEndTs).catch(() => null),
+      const [activeRow, mrrRow, newRow, cancelRow] = await Promise.all([
+        query<{ count: string }>(
+          `SELECT COUNT(*) as count FROM hotmart_subscriptions WHERE status = 'ACTIVE'`
+        ),
+        query<{ sum: string }>(
+          `SELECT COALESCE(SUM(
+             CASE WHEN mrr_contribution IS NOT NULL THEN mrr_contribution
+                  WHEN plan_interval = 'ANNUAL' THEN ROUND(price_value / 12, 2)
+                  ELSE price_value END
+           ), 0) as sum
+           FROM hotmart_subscriptions WHERE status = 'ACTIVE' AND price_value IS NOT NULL`
+        ),
+        query<{ count: string }>(
+          `SELECT COUNT(DISTINCT subscriber_code) as count
+           FROM hotmart_webhook_events
+           WHERE event = 'PURCHASE_APPROVED'
+             AND received_at >= $1`,
+          [monthStart]
+        ),
+        query<{ count: string }>(
+          `SELECT COUNT(DISTINCT subscriber_code) as count
+           FROM hotmart_webhook_events
+           WHERE event = ANY($1::text[])
+             AND received_at >= $2`,
+          [CANCELLATION_EVENTS, monthStart]
+        ),
       ]);
 
-      const apiMrr = activeNow.reduce((sum, s) => sum + (s.price?.value ?? 0), 0);
-      const apiMrrPrev = activePrev.reduce((sum, s) => sum + (s.price?.value ?? 0), 0);
-
-      const apiSubscriberCodes = new Set(activeNow.map(s => s.subscriber_code).filter(Boolean));
-      const dbExclusiveActive = dbSummary
-        ? Math.max(0, dbSummary.active - [...apiSubscriberCodes].length)
-        : 0;
-
-      const mrr = apiMrr + (dbSummary?.mrr ?? 0);
-      const mrrPrev = apiMrrPrev + (dbSummaryPrev?.mrr ?? 0);
-
-      function countInRange(arr: typeof allCancelled, start: number, end: number): number {
-        return arr.filter(s => {
-          const ts = s.cancellation_date ?? s.accession_date;
-          return ts && ts >= start && ts <= end;
-        }).length;
-      }
-
-      const apiCancellationsThisMonth =
-        countInRange(allCancelled, startTs, endTs) +
-        countInRange(allDelayed, startTs, endTs) +
-        countInRange(allInactive, startTs, endTs);
-
-      const cancellationsThisMonth = apiCancellationsThisMonth + (dbSummary?.cancelledThisMonth ?? 0);
-
-      const apiCancellationsPrev =
-        countInRange(allCancelled, prevStartTs, prevEndTs) +
-        countInRange(allDelayed, prevStartTs, prevEndTs) +
-        countInRange(allInactive, prevStartTs, prevEndTs);
-
-      const cancellationsPrev = apiCancellationsPrev + (dbSummaryPrev?.cancelledThisMonth ?? 0);
-
-      const totalActive = activeNow.length + dbExclusiveActive;
-      const newSubscribers = newThisMonth.length + (dbSummary?.newThisMonth ?? 0);
-      const newSubscribersPrev = activePrev.length + (dbSummaryPrev?.newThisMonth ?? 0);
-
-      const churnBase = totalActive + cancellationsThisMonth;
-      const churnRate = churnBase > 0 ? (cancellationsThisMonth / churnBase) * 100 : 0;
-
-      const totalRegistrations = contactsThisMonth.length;
+      const activeSubscribers = parseInt(activeRow[0]?.count ?? "0", 10);
+      const mrr = parseFloat(mrrRow[0]?.sum ?? "0");
+      const arr = Math.round(mrr * 12 * 100) / 100;
+      const newSubscribers = parseInt(newRow[0]?.count ?? "0", 10);
+      const cancellations = parseInt(cancelRow[0]?.count ?? "0", 10);
+      const churnBase = activeSubscribers + cancellations;
+      const churnRate = churnBase > 0 ? parseFloat(((cancellations / churnBase) * 100).toFixed(2)) : 0;
 
       return {
         mrr,
-        mrrPrev,
-        mrrChange: mrrPrev > 0 ? ((mrr - mrrPrev) / mrrPrev) * 100 : 0,
-        activeSubscribers: totalActive,
+        arr,
+        mrrChange: null,
+        activeSubscribers,
         newSubscribers,
-        newSubscribersPrev,
-        cancellations: cancellationsThisMonth,
-        cancellationsPrev,
-        churnRate: parseFloat(churnRate.toFixed(2)),
-        totalRegistrations,
-        conversionRate: totalRegistrations > 0 ? (newSubscribers / totalRegistrations) * 100 : 0,
-        avgDaysToConversion: 0,
-        dataSource: {
-          apiActive: activeNow.length,
-          webhookActive: dbExclusiveActive,
-          webhookTotal: dbSummary?.total ?? 0,
-        },
+        cancellations,
+        churnRate,
+        conversionRate: 0,
       };
     });
     res.json({ error: false, data });

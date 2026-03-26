@@ -11,18 +11,13 @@ async function apiFetch<T>(url: string): Promise<{ error: boolean; message?: str
 export async function fetchOverview() {
   return apiFetch<{
     mrr: number;
-    mrrPrev: number;
-    mrrChange: number;
+    arr: number;
+    mrrChange: number | null;
     activeSubscribers: number;
     newSubscribers: number;
-    newSubscribersPrev: number;
     cancellations: number;
-    cancellationsPrev: number;
     churnRate: number;
-    totalRegistrations: number;
     conversionRate: number;
-    avgDaysToConversion: number;
-    dataSource: { apiActive: number; webhookActive: number; webhookTotal: number };
   }>(`${BASE}/overview`);
 }
 
@@ -33,7 +28,12 @@ export async function fetchWebhookStatus() {
   }>("/api/webhooks/hotmart/status");
 }
 
-export async function fetchRevenue(start: string, end: string) {
+export async function fetchRevenue(start?: string, end?: string) {
+  const now = new Date();
+  const defaultStart = new Date(now.getFullYear(), now.getMonth() - 11, 1).toISOString().split("T")[0];
+  const defaultEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split("T")[0];
+  start = start ?? defaultStart;
+  end = end ?? defaultEnd;
   return apiFetch<{
     mrr: number;
     arr: number;
