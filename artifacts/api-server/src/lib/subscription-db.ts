@@ -56,19 +56,30 @@ export async function upsertSubscriptionFromWebhook(
   const priceValue = data.purchase?.price?.value ?? null;
   const priceCurrency = data.purchase?.price?.currency_code ?? null;
 
-  let status = sub?.status ?? mapEventToStatus(event);
+  const isSwitchPlan = event === "SWITCH_PLAN";
+  const mappedStatus = sub?.status ?? mapEventToStatus(event);
+  const status = isSwitchPlan ? "ACTIVE" : mappedStatus;
+
   const cancellationDate =
-    ["SUBSCRIPTION_CANCELLATION", "PURCHASE_CANCELED", "PURCHASE_REFUNDED", "PURCHASE_CHARGEBACK"].includes(event)
+    ["SUBSCRIPTION_CANCELLATION", "PURCHASE_CANCELED", "PURCHASE_REFUNDED", "PURCHASE_CHARGEBACK", "PURCHASE_EXPIRED"].includes(event)
       ? payload.creation_date
       : null;
+
+  const isAnnualPlan = planName
+    ? /anual|annual/i.test(planName)
+    : false;
+  const mrrContribution = priceValue != null
+    ? (isAnnualPlan ? Math.round((priceValue / 12) * 100) / 100 : priceValue)
+    : null;
 
   await query(
     `INSERT INTO hotmart_subscriptions (
         subscriber_code, status, product_id, product_name,
         plan_name, plan_id, subscriber_name, subscriber_email,
         accession_date, cancellation_date, price_value, price_currency,
+        plan_interval, mrr_contribution,
         last_event, last_event_at, updated_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW(),NOW())
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW(),NOW())
       ON CONFLICT (subscriber_code) DO UPDATE SET
         status = EXCLUDED.status,
         product_id = COALESCE(EXCLUDED.product_id, hotmart_subscriptions.product_id),
@@ -80,6 +91,8 @@ export async function upsertSubscriptionFromWebhook(
         cancellation_date = COALESCE(EXCLUDED.cancellation_date, hotmart_subscriptions.cancellation_date),
         price_value = COALESCE(EXCLUDED.price_value, hotmart_subscriptions.price_value),
         price_currency = COALESCE(EXCLUDED.price_currency, hotmart_subscriptions.price_currency),
+        plan_interval = COALESCE(EXCLUDED.plan_interval, hotmart_subscriptions.plan_interval),
+        mrr_contribution = COALESCE(EXCLUDED.mrr_contribution, hotmart_subscriptions.mrr_contribution),
         last_event = EXCLUDED.last_event,
         last_event_at = NOW(),
         updated_at = NOW()`,
@@ -96,6 +109,8 @@ export async function upsertSubscriptionFromWebhook(
       cancellationDate,
       priceValue,
       priceCurrency,
+      isAnnualPlan ? "ANNUAL" : "MONTHLY",
+      mrrContribution,
       event,
     ]
   );
@@ -107,16 +122,17 @@ function mapEventToStatus(event: string): string {
   switch (event) {
     case "PURCHASE_APPROVED":
     case "REACTIVATED_PURCHASE":
+    case "PURCHASE_COMPLETE":
       return "ACTIVE";
     case "SUBSCRIPTION_CANCELLATION":
     case "PURCHASE_CANCELED":
     case "PURCHASE_REFUNDED":
     case "PURCHASE_CHARGEBACK":
       return "CANCELLED";
+    case "PURCHASE_EXPIRED":
+      return "INACTIVE";
     case "PURCHASE_DELAYED":
       return "DELAYED";
-    case "PURCHASE_COMPLETE":
-      return "ACTIVE";
     default:
       return "ACTIVE";
   }

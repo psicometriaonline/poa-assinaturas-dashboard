@@ -36,6 +36,7 @@ router.post("/hotmart", async (req: Request, res: Response) => {
       "PURCHASE_COMPLETE",
       "PURCHASE_REFUNDED",
       "PURCHASE_CHARGEBACK",
+      "PURCHASE_EXPIRED",
       "SUBSCRIPTION_CANCELLATION",
       "PURCHASE_DELAYED",
       "SWITCH_PLAN",
