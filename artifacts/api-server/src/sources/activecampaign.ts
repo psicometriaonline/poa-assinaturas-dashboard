@@ -28,6 +28,7 @@ async function acFetch(path: string, params: Record<string, string> = {}): Promi
 export interface ACFieldValue {
   id: string;
   contact: string;
+  owner: string;
   field: string;
   value: string;
 }
@@ -39,8 +40,9 @@ export interface ACContact {
   lastName: string;
   cdate: string;
   fields?: ACField[];
-  fieldValues?: ACFieldValue[];
+  fieldValues?: ACFieldValue[] | string[];
   tags?: string[];
+  _resolvedFieldValues?: ACFieldValue[];
 }
 
 export interface ACField {
@@ -64,9 +66,27 @@ async function paginateContacts(params: Record<string, string>): Promise<ACConta
       ...params,
       limit: limit.toString(),
       offset: offset.toString(),
-    })) as { contacts?: ACContact[]; meta?: { total?: string } };
+    })) as {
+      contacts?: ACContact[];
+      fieldValues?: ACFieldValue[];
+      meta?: { total?: string };
+    };
 
     const contacts = data.contacts ?? [];
+
+    const topLevelFieldValues = data.fieldValues ?? [];
+    if (topLevelFieldValues.length > 0) {
+      const fvByContact: Record<string, ACFieldValue[]> = {};
+      for (const fv of topLevelFieldValues) {
+        const cid = fv.contact ?? fv.owner;
+        if (!fvByContact[cid]) fvByContact[cid] = [];
+        fvByContact[cid].push(fv);
+      }
+      for (const c of contacts) {
+        c._resolvedFieldValues = fvByContact[c.id] ?? [];
+      }
+    }
+
     results.push(...contacts);
 
     if (contacts.length < limit) break;
@@ -157,12 +177,17 @@ export async function getLeadContacts(
 }
 
 export function getContactUtmField(contact: ACContact, fieldId: string): string {
-  const fv = contact.fieldValues?.find((f) => f.field === fieldId);
-  if (fv?.value?.trim()) return fv.value.trim();
+  const resolved = contact._resolvedFieldValues;
+  if (resolved && resolved.length > 0) {
+    const fv = resolved.find((f) => f.field === fieldId);
+    if (fv?.value?.trim()) return fv.value.trim();
+  }
+
   const legacyMap: Record<string, string> = { "13": "utm_source", "14": "utm_medium" };
   const legacyKey = legacyMap[fieldId];
   if (legacyKey) {
-    const f = contact.fields?.find((fi) => fi.field.toLowerCase().includes(legacyKey));
+    const fields = contact.fields as ACField[] | undefined;
+    const f = fields?.find((fi) => fi.field.toLowerCase().includes(legacyKey));
     if (f?.value?.trim()) return f.value.trim();
   }
   return "";

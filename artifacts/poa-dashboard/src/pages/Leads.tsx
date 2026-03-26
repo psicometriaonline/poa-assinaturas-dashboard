@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { Fragment, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   BarChart,
@@ -9,6 +9,8 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
+  ComposedChart,
+  Line,
 } from "recharts";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { fetchLeads, formatNumber, formatPct } from "@/lib/api";
@@ -58,7 +60,7 @@ function UtmTable({
     }
   }
 
-  const visibleMonths = months.slice(-12);
+  const visibleMonths = months;
 
   if (rows.length === 0) {
     return (
@@ -91,7 +93,7 @@ function UtmTable({
         </thead>
         <tbody>
           {rows.map((row) => (
-            <React.Fragment key={row.source}>
+            <Fragment key={row.source}>
               <tr
                 className="border-b border-border/40 hover:bg-sidebar-accent cursor-pointer"
                 onClick={() => toggle(row.source)}
@@ -144,7 +146,7 @@ function UtmTable({
                     </td>
                   </tr>
                 ))}
-            </React.Fragment>
+            </Fragment>
           ))}
           <tr className="border-t border-border bg-sidebar/60">
             <td className="py-2 pr-4 pl-2 sticky left-0 bg-sidebar/60 font-bold text-foreground">
@@ -179,13 +181,14 @@ export default function Leads() {
   const hasError = isError || resp?.error;
   const errMsg = (resp as { message?: string } | null)?.message ?? (error as Error)?.message;
 
-  const monthlyChartData = (d?.monthly ?? []).slice(-12).map((m) => ({
+  const monthlyChartData = (d?.monthly ?? []).map((m) => ({
     name: m.month,
     Leads: m.leads,
     Conversões: m.conversions,
+    "Taxa %": m.conversionRate,
   }));
 
-  const dailyChartData = (d?.daily ?? []).slice(-60).map((item) => {
+  const dailyChartData = (d?.daily ?? []).map((item) => {
     const [, m, day] = item.date.split("-");
     return { name: `${day}/${m}`, Leads: item.leads };
   });
@@ -241,7 +244,7 @@ export default function Leads() {
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <div className="bg-card border border-card-border rounded-xl p-5">
           <h2 className="text-sm font-semibold text-foreground mb-4">
-            Leads vs. Conversões (mensal)
+            Leads vs. Conversões + Taxa % (mensal)
           </h2>
           {isLoading ? (
             <div className="h-52 bg-muted rounded animate-pulse" />
@@ -251,22 +254,29 @@ export default function Leads() {
             </div>
           ) : (
             <ResponsiveContainer width="100%" height={210}>
-              <BarChart data={monthlyChartData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+              <ComposedChart data={monthlyChartData} margin={{ top: 4, right: 40, bottom: 0, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                 <XAxis dataKey="name" tick={{ fill: "#94a3b8", fontSize: 11 }} />
-                <YAxis tick={{ fill: "#94a3b8", fontSize: 11 }} allowDecimals={false} />
-                <Tooltip contentStyle={TOOLTIP_STYLE} />
+                <YAxis yAxisId="count" tick={{ fill: "#94a3b8", fontSize: 11 }} allowDecimals={false} />
+                <YAxis yAxisId="pct" orientation="right" tick={{ fill: "#94a3b8", fontSize: 11 }} tickFormatter={(v) => `${v}%`} />
+                <Tooltip
+                  contentStyle={TOOLTIP_STYLE}
+                  formatter={(v: number, name: string) =>
+                    name === "Taxa %" ? [`${v.toFixed(1)}%`, name] : [v, name]
+                  }
+                />
                 <Legend wrapperStyle={{ color: "#94a3b8", fontSize: 12 }} />
-                <Bar dataKey="Leads" fill={COLOR_LEADS} radius={[4, 4, 0, 0]} />
-                <Bar dataKey="Conversões" fill={COLOR_CONV} radius={[4, 4, 0, 0]} />
-              </BarChart>
+                <Bar yAxisId="count" dataKey="Leads" fill={COLOR_LEADS} radius={[4, 4, 0, 0]} />
+                <Bar yAxisId="count" dataKey="Conversões" fill={COLOR_CONV} radius={[4, 4, 0, 0]} />
+                <Line yAxisId="pct" type="monotone" dataKey="Taxa %" stroke="#f59e0b" strokeWidth={2} dot={false} />
+              </ComposedChart>
             </ResponsiveContainer>
           )}
         </div>
 
         <div className="bg-card border border-card-border rounded-xl p-5">
           <h2 className="text-sm font-semibold text-foreground mb-4">
-            Novos Leads por Dia (últimos 60 dias)
+            Novos Leads por Dia (período selecionado)
           </h2>
           {isLoading ? (
             <div className="h-52 bg-muted rounded animate-pulse" />
@@ -281,7 +291,7 @@ export default function Leads() {
                 <XAxis
                   dataKey="name"
                   tick={{ fill: "#94a3b8", fontSize: 10 }}
-                  interval={Math.floor(dailyChartData.length / 8)}
+                  interval={Math.max(0, Math.floor(dailyChartData.length / 8) - 1)}
                 />
                 <YAxis tick={{ fill: "#94a3b8", fontSize: 11 }} allowDecimals={false} />
                 <Tooltip contentStyle={TOOLTIP_STYLE} />
