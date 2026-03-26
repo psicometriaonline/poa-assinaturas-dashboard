@@ -149,6 +149,28 @@ export async function fetchLeads(start: string, end: string) {
   return apiFetch<LeadsData>(`${BASE}/leads?start=${start}&end=${end}`);
 }
 
+export interface LeadsSnapshot {
+  id: number;
+  snapshot_date: string;
+  total_free_trial: number;
+  total_alunos_poa: number;
+  converted: number;
+  conversion_rate: number;
+  created_at: string;
+}
+
+export async function fetchLeadsSnapshots(limit = 90) {
+  return apiFetch<LeadsSnapshot[]>(`${BASE}/leads/snapshots?limit=${limit}`);
+}
+
+export async function triggerLeadsSnapshot(adminSecret: string) {
+  const res = await fetch(`${BASE}/leads/snapshot`, {
+    method: "POST",
+    headers: { "x-admin-token": adminSecret },
+  });
+  return res.json();
+}
+
 export function formatBRL(value: number): string {
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",

@@ -158,21 +158,89 @@ export async function getContactsWithFields(
   return contacts;
 }
 
-export async function getLeadContacts(
-  tagId: string,
-  createdAfter: string,
-  createdBefore: string
-): Promise<ACContact[]> {
+/**
+ * Fetch all contacts with a given tag ID (tagid param).
+ * Includes UTM fieldValues. Filters by date in-memory after fetch.
+ */
+export async function getLeadContacts(tagId: string): Promise<ACContact[]> {
   try {
     return await paginateContacts({
-      "filters[tagid]": tagId,
-      "filters[created_after]": createdAfter,
-      "filters[created_before]": createdBefore,
+      tagid: tagId,
       include: "fieldValues",
     });
   } catch (err) {
     logger.error({ err }, "Error fetching lead contacts from AC");
     throw err;
+  }
+}
+
+/**
+ * Fetch all active contact emails from a list (e.g. "Alunos - POA", list 30).
+ * Returns a Set of lowercase-trimmed emails for fast lookup.
+ */
+export async function getListContactEmails(listId: string): Promise<Set<string>> {
+  try {
+    const emails = new Set<string>();
+    let offset = 0;
+    const limit = 100;
+
+    while (true) {
+      const data = (await acFetch("/contacts", {
+        listid: listId,
+        status: "1",
+        limit: limit.toString(),
+        offset: offset.toString(),
+      })) as {
+        contacts?: ACContact[];
+        meta?: { total?: string };
+      };
+
+      const contacts = data.contacts ?? [];
+      for (const c of contacts) {
+        if (c.email) emails.add(c.email.toLowerCase().trim());
+      }
+
+      if (contacts.length < limit) break;
+      offset += limit;
+    }
+
+    return emails;
+  } catch (err) {
+    logger.error({ err }, "Error fetching AC list contact emails");
+    throw err;
+  }
+}
+
+/**
+ * Get total count of contacts with a tag (no pagination, just meta.total).
+ */
+export async function getTagContactCount(tagId: string): Promise<number> {
+  try {
+    const data = (await acFetch("/contacts", {
+      tagid: tagId,
+      limit: "1",
+    })) as { meta?: { total?: string } };
+    return parseInt(data.meta?.total ?? "0", 10);
+  } catch (err) {
+    logger.error({ err }, "Error fetching tag contact count");
+    return 0;
+  }
+}
+
+/**
+ * Get total count of active contacts in a list.
+ */
+export async function getListContactCount(listId: string): Promise<number> {
+  try {
+    const data = (await acFetch("/contacts", {
+      listid: listId,
+      status: "1",
+      limit: "1",
+    })) as { meta?: { total?: string } };
+    return parseInt(data.meta?.total ?? "0", 10);
+  } catch (err) {
+    logger.error({ err }, "Error fetching list contact count");
+    return 0;
   }
 }
 

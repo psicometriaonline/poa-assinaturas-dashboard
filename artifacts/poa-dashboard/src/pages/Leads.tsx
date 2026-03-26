@@ -12,9 +12,10 @@ import {
   ComposedChart,
   Line,
   LabelList,
+  LineChart,
 } from "recharts";
-import { ChevronDown, ChevronRight } from "lucide-react";
-import { fetchLeads, formatNumber, formatPct } from "@/lib/api";
+import { ChevronDown, ChevronRight, RefreshCw } from "lucide-react";
+import { fetchLeads, fetchLeadsSnapshots, formatNumber, formatPct } from "@/lib/api";
 import { KPICard } from "@/components/KPICard";
 import { usePeriod } from "@/context/PeriodContext";
 
@@ -178,9 +179,30 @@ export default function Leads() {
     queryFn: () => fetchLeads(start, end),
   });
 
+  const { data: snapResp, isLoading: snapLoading } = useQuery({
+    queryKey: ["leads-snapshots"],
+    queryFn: () => fetchLeadsSnapshots(90),
+    staleTime: 5 * 60 * 1000,
+  });
+
   const d = resp?.data ?? null;
   const hasError = isError || resp?.error;
   const errMsg = (resp as { message?: string } | null)?.message ?? (error as Error)?.message;
+
+  const snapshots = (snapResp?.data ?? []).slice().reverse();
+  const latestSnap = snapshots.length > 0 ? snapshots[snapshots.length - 1] : null;
+
+  const snapChartData = snapshots.map((s) => {
+    const dateStr = s.snapshot_date.split("T")[0];
+    const [, mo, day] = dateStr.split("-");
+    return {
+      name: `${day}/${mo}`,
+      "Free-Trial": s.total_free_trial,
+      "Alunos POA": s.total_alunos_poa,
+      "Convertidos": s.converted,
+      "Taxa %": Number(s.conversion_rate),
+    };
+  });
 
   const monthlyChartData = (d?.monthly ?? []).map((m) => ({
     name: m.month,
@@ -199,7 +221,7 @@ export default function Leads() {
       <div>
         <h1 className="text-xl font-bold text-foreground">Leads e Conversão</h1>
         <p className="text-sm text-muted-foreground">
-          Cadastros gratuitos (Free-trial) × assinantes ativos — via ActiveCampaign
+          Tag Free-Trial → lista Alunos - POA — snapshot diário às 03h (horário de Brasília)
         </p>
       </div>
 
@@ -211,16 +233,17 @@ export default function Leads() {
 
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
         <KPICard
-          title="Total de Leads"
+          title="Free-Trial (período)"
           value={d ? formatNumber(d.totalLeads) : "—"}
+          subtitle="com tag Free-Trial no período"
           loading={isLoading}
           error={!!hasError}
           errorMessage={errMsg}
         />
         <KPICard
-          title="Conversões"
+          title="Convertidos (período)"
           value={d ? formatNumber(d.totalConversions) : "—"}
-          subtitle="tornaram-se assinantes"
+          subtitle="Free-Trial e estão em Alunos - POA"
           loading={isLoading}
           error={!!hasError}
           errorMessage={errMsg}
@@ -228,18 +251,81 @@ export default function Leads() {
         <KPICard
           title="Taxa de Conversão"
           value={d ? formatPct(d.conversionRate) : "—"}
+          subtitle="do período"
           loading={isLoading}
           error={!!hasError}
           errorMessage={errMsg}
         />
         <KPICard
-          title="Tempo Médio p/ Converter"
-          value={d ? `${d.avgDaysToConvert} dias` : "—"}
-          loading={isLoading}
-          error={!!hasError}
-          errorMessage={errMsg}
-          invertChange
+          title="Alunos - POA (total)"
+          value={latestSnap ? formatNumber(latestSnap.total_alunos_poa) : "—"}
+          subtitle={latestSnap ? `snapshot de ${new Date(latestSnap.snapshot_date.split("T")[0] + "T12:00:00").toLocaleDateString("pt-BR")}` : "aguardando snapshot"}
+          loading={snapLoading && !latestSnap}
         />
+      </div>
+
+      <div className="bg-card border border-card-border rounded-xl p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-sm font-semibold text-foreground">Monitoramento Diário</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Free-Trial vs Alunos - POA — snapshot capturado diariamente às 03h
+            </p>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <RefreshCw className="w-3 h-3" />
+            {snapshots.length > 0 ? `${snapshots.length} snapshot${snapshots.length > 1 ? "s" : ""}` : "Nenhum snapshot ainda"}
+          </div>
+        </div>
+
+        {snapLoading ? (
+          <div className="h-48 bg-muted rounded animate-pulse" />
+        ) : snapshots.length === 0 ? (
+          <div className="rounded-lg border border-border/40 bg-sidebar/40 p-6 text-center">
+            <RefreshCw className="w-6 h-6 text-muted-foreground mx-auto mb-2" />
+            <p className="text-sm font-medium text-foreground">Monitoramento iniciado</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              O primeiro snapshot será capturado hoje às 03h (horário de Brasília).
+              <br />O histórico será acumulado aqui diariamente.
+            </p>
+            {latestSnap && (
+              <div className="mt-3 inline-flex gap-6 text-xs text-muted-foreground">
+                <span>Free-Trial: <strong className="text-foreground">{formatNumber(latestSnap.total_free_trial)}</strong></span>
+                <span>Alunos POA: <strong className="text-foreground">{formatNumber(latestSnap.total_alunos_poa)}</strong></span>
+                <span>Convertidos: <strong className="text-[#22c55e]">{latestSnap.converted} ({latestSnap.conversion_rate}%)</strong></span>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="flex gap-6 text-xs text-muted-foreground">
+              <span>Último: {new Date(latestSnap!.snapshot_date.split("T")[0] + "T12:00:00").toLocaleDateString("pt-BR")}</span>
+              <span>Free-Trial: <strong className="text-foreground">{formatNumber(latestSnap!.total_free_trial)}</strong></span>
+              <span>Alunos POA: <strong className="text-foreground">{formatNumber(latestSnap!.total_alunos_poa)}</strong></span>
+              <span>Convertidos: <strong className="text-[#22c55e]">{latestSnap!.converted} ({latestSnap!.conversion_rate}%)</strong></span>
+            </div>
+            <ResponsiveContainer width="100%" height={180}>
+              <LineChart data={snapChartData} margin={{ top: 4, right: 40, bottom: 0, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                <XAxis dataKey="name" tick={{ fill: "#94a3b8", fontSize: 10 }}
+                  interval={Math.max(0, Math.floor(snapChartData.length / 10) - 1)} />
+                <YAxis yAxisId="count" tick={{ fill: "#94a3b8", fontSize: 11 }} allowDecimals={false} />
+                <YAxis yAxisId="pct" orientation="right" tick={{ fill: "#94a3b8", fontSize: 11 }} tickFormatter={(v) => `${v}%`} />
+                <Tooltip
+                  contentStyle={TOOLTIP_STYLE}
+                  formatter={(v: number, name: string) =>
+                    name === "Taxa %" ? [`${v.toFixed(1)}%`, name] : [formatNumber(v), name]
+                  }
+                />
+                <Legend wrapperStyle={{ color: "#94a3b8", fontSize: 12 }} />
+                <Line yAxisId="count" type="monotone" dataKey="Free-Trial" stroke={COLOR_LEADS} strokeWidth={2} dot={false} />
+                <Line yAxisId="count" type="monotone" dataKey="Alunos POA" stroke="#a855f7" strokeWidth={2} dot={false} />
+                <Line yAxisId="count" type="monotone" dataKey="Convertidos" stroke={COLOR_CONV} strokeWidth={1.5} dot={false} strokeDasharray="4 2" />
+                <Line yAxisId="pct" type="monotone" dataKey="Taxa %" stroke="#f59e0b" strokeWidth={1.5} dot={false} strokeDasharray="3 3" />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">

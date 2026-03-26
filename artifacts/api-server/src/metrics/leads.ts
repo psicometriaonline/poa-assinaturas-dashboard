@@ -1,8 +1,15 @@
-import { getLeadContacts, getContactUtmField } from "../sources/activecampaign";
+import {
+  getLeadContacts,
+  getListContactEmails,
+  getContactUtmField,
+  getTagContactCount,
+  getListContactCount,
+} from "../sources/activecampaign";
 import { query } from "../lib/db";
 import { logger } from "../lib/logger";
 
 const FREE_TRIAL_TAG_ID = "401";
+const ALUNOS_POA_LIST_ID = "30";
 const UTM_SOURCE_FIELD_ID = "13";
 const UTM_MEDIUM_FIELD_ID = "14";
 
@@ -41,6 +48,16 @@ export interface LeadsMetrics {
   }>;
 }
 
+export interface LeadsSnapshot {
+  id: number;
+  snapshot_date: string;
+  total_free_trial: number;
+  total_alunos_poa: number;
+  converted: number;
+  conversion_rate: number;
+  created_at: string;
+}
+
 function toDateStr(d: Date): string {
   return d.toISOString().split("T")[0];
 }
@@ -70,32 +87,29 @@ export async function getLeadsMetrics(
   startDate: Date,
   endDate: Date
 ): Promise<LeadsMetrics> {
-  const startStr = startDate.toISOString();
-  const endStr = endDate.toISOString();
+  const startMs = startDate.getTime();
+  const endMs = endDate.getTime();
 
-  const [contacts, activeSubscribers] = await Promise.all([
-    getLeadContacts(FREE_TRIAL_TAG_ID, startStr, endStr),
-    query<{ email: string; accession_date: string }>(
-      `SELECT subscriber_email as email, accession_date
-       FROM hotmart_subscriptions
-       WHERE status = 'ACTIVE' AND subscriber_email IS NOT NULL`
-    ),
+  const [allFreeTrialContacts, alunosPoaEmails] = await Promise.all([
+    getLeadContacts(FREE_TRIAL_TAG_ID),
+    getListContactEmails(ALUNOS_POA_LIST_ID),
   ]);
 
-  const subscriberMap = new Map<string, number>();
-  for (const s of activeSubscribers) {
-    if (s.email) {
-      subscriberMap.set(s.email.toLowerCase().trim(), Number(s.accession_date) || 0);
-    }
-  }
+  const contacts = allFreeTrialContacts.filter((c) => {
+    const t = new Date(c.cdate).getTime();
+    return t >= startMs && t <= endMs;
+  });
 
   logger.info(
-    { leadCount: contacts.length, subscriberCount: subscriberMap.size },
-    "Leads metrics: fetched AC contacts and DB subscribers"
+    {
+      totalFreeTrial: allFreeTrialContacts.length,
+      inPeriod: contacts.length,
+      alunosPoaCount: alunosPoaEmails.size,
+    },
+    "Leads metrics: fetched AC data"
   );
 
   let totalConversions = 0;
-  const conversionTimes: number[] = [];
 
   const dailyMap: Record<string, number> = {};
   const monthlyLeads: Record<string, number> = {};
@@ -107,59 +121,61 @@ export async function getLeadsMetrics(
   const sourceMediumConversions: Record<string, Record<string, number>> = {};
 
   const sourceMonthLeads: Record<string, Record<string, number>> = {};
-  const sourceMediumMonthLeads: Record<string, Record<string, Record<string, number>>> = {};
+  const sourceMediumMonthLeads: Record<
+    string,
+    Record<string, Record<string, number>>
+  > = {};
 
   for (const contact of contacts) {
     const cdate = new Date(contact.cdate);
     const dateStr = toDateStr(cdate);
     const monthKey = toMonthKey(cdate);
-    const utmSource = getContactUtmField(contact, UTM_SOURCE_FIELD_ID) || "(direto)";
-    const utmMedium = getContactUtmField(contact, UTM_MEDIUM_FIELD_ID) || "(nenhum)";
+    const utmSource =
+      getContactUtmField(contact, UTM_SOURCE_FIELD_ID) || "(direto)";
+    const utmMedium =
+      getContactUtmField(contact, UTM_MEDIUM_FIELD_ID) || "(nenhum)";
 
     dailyMap[dateStr] = (dailyMap[dateStr] ?? 0) + 1;
     monthlyLeads[monthKey] = (monthlyLeads[monthKey] ?? 0) + 1;
 
     sourceLeads[utmSource] = (sourceLeads[utmSource] ?? 0) + 1;
     if (!sourceMediumLeads[utmSource]) sourceMediumLeads[utmSource] = {};
-    sourceMediumLeads[utmSource][utmMedium] = (sourceMediumLeads[utmSource][utmMedium] ?? 0) + 1;
+    sourceMediumLeads[utmSource][utmMedium] =
+      (sourceMediumLeads[utmSource][utmMedium] ?? 0) + 1;
 
     if (!sourceMonthLeads[utmSource]) sourceMonthLeads[utmSource] = {};
-    sourceMonthLeads[utmSource][monthKey] = (sourceMonthLeads[utmSource][monthKey] ?? 0) + 1;
+    sourceMonthLeads[utmSource][monthKey] =
+      (sourceMonthLeads[utmSource][monthKey] ?? 0) + 1;
 
-    if (!sourceMediumMonthLeads[utmSource]) sourceMediumMonthLeads[utmSource] = {};
-    if (!sourceMediumMonthLeads[utmSource][utmMedium]) sourceMediumMonthLeads[utmSource][utmMedium] = {};
+    if (!sourceMediumMonthLeads[utmSource])
+      sourceMediumMonthLeads[utmSource] = {};
+    if (!sourceMediumMonthLeads[utmSource][utmMedium])
+      sourceMediumMonthLeads[utmSource][utmMedium] = {};
     sourceMediumMonthLeads[utmSource][utmMedium][monthKey] =
       (sourceMediumMonthLeads[utmSource][utmMedium][monthKey] ?? 0) + 1;
 
     const email = contact.email?.toLowerCase().trim();
-    const accessionDate = email ? subscriberMap.get(email) : undefined;
-    const cdateMs = cdate.getTime();
-    if (accessionDate !== undefined && accessionDate > 0 && accessionDate >= cdateMs) {
+    const isConverted = email ? alunosPoaEmails.has(email) : false;
+
+    if (isConverted) {
       totalConversions++;
       monthlyConversions[monthKey] = (monthlyConversions[monthKey] ?? 0) + 1;
       sourceConversions[utmSource] = (sourceConversions[utmSource] ?? 0) + 1;
 
-      if (!sourceMediumConversions[utmSource]) sourceMediumConversions[utmSource] = {};
+      if (!sourceMediumConversions[utmSource])
+        sourceMediumConversions[utmSource] = {};
       sourceMediumConversions[utmSource][utmMedium] =
         (sourceMediumConversions[utmSource][utmMedium] ?? 0) + 1;
-
-      const days = (accessionDate - cdateMs) / (1000 * 60 * 60 * 24);
-      conversionTimes.push(days);
     }
   }
 
   const totalLeads = contacts.length;
   const conversionRate =
-    totalLeads > 0 ? parseFloat(((totalConversions / totalLeads) * 100).toFixed(2)) : 0;
-  const avgDaysToConvert =
-    conversionTimes.length > 0
-      ? parseFloat(
-          (conversionTimes.reduce((a, b) => a + b, 0) / conversionTimes.length).toFixed(1)
-        )
+    totalLeads > 0
+      ? parseFloat(((totalConversions / totalLeads) * 100).toFixed(2))
       : 0;
 
   const allMonths = monthsBetween(startDate, endDate);
-  const tableMonths = allMonths;
 
   const daily = Object.entries(dailyMap)
     .sort(([a], [b]) => a.localeCompare(b))
@@ -168,20 +184,30 @@ export async function getLeadsMetrics(
   const monthly = allMonths.map((mk) => {
     const leads = monthlyLeads[mk] ?? 0;
     const conversions = monthlyConversions[mk] ?? 0;
-    const rate = leads > 0 ? parseFloat(((conversions / leads) * 100).toFixed(2)) : 0;
-    return { month: toMonthLabel(mk), monthKey: mk, leads, conversions, conversionRate: rate };
+    const rate =
+      leads > 0 ? parseFloat(((conversions / leads) * 100).toFixed(2)) : 0;
+    return {
+      month: toMonthLabel(mk),
+      monthKey: mk,
+      leads,
+      conversions,
+      conversionRate: rate,
+    };
   });
 
   const bySource: LeadsBySourceRow[] = Object.entries(sourceLeads)
     .map(([source, leads]) => {
       const conversions = sourceConversions[source] ?? 0;
-      const rate = leads > 0 ? parseFloat(((conversions / leads) * 100).toFixed(2)) : 0;
+      const rate =
+        leads > 0 ? parseFloat(((conversions / leads) * 100).toFixed(2)) : 0;
       const mediumMap = sourceMediumLeads[source] ?? {};
-      const mediums = Object.entries(mediumMap).map(([medium, mLeads]) => ({
-        medium,
-        leads: mLeads,
-        conversions: sourceMediumConversions[source]?.[medium] ?? 0,
-      })).sort((a, b) => b.leads - a.leads);
+      const mediums = Object.entries(mediumMap)
+        .map(([medium, mLeads]) => ({
+          medium,
+          leads: mLeads,
+          conversions: sourceMediumConversions[source]?.[medium] ?? 0,
+        }))
+        .sort((a, b) => b.leads - a.leads);
       return { source, leads, conversions, rate, mediums };
     })
     .sort((a, b) => b.leads - a.leads);
@@ -190,11 +216,13 @@ export async function getLeadsMetrics(
     .map(([source, byMonth]) => {
       const total = sourceLeads[source] ?? 0;
       const mediumMonthMap = sourceMediumMonthLeads[source] ?? {};
-      const mediums = Object.entries(mediumMonthMap).map(([medium, mByMonth]) => ({
-        medium,
-        total: Object.values(mByMonth).reduce((a, b) => a + b, 0),
-        byMonth: mByMonth,
-      })).sort((a, b) => b.total - a.total);
+      const mediums = Object.entries(mediumMonthMap)
+        .map(([medium, mByMonth]) => ({
+          medium,
+          total: Object.values(mByMonth).reduce((a, b) => a + b, 0),
+          byMonth: mByMonth,
+        }))
+        .sort((a, b) => b.total - a.total);
       return { source, total, byMonth, mediums };
     })
     .sort((a, b) => b.total - a.total);
@@ -203,11 +231,72 @@ export async function getLeadsMetrics(
     totalLeads,
     totalConversions,
     conversionRate,
-    avgDaysToConvert,
+    avgDaysToConvert: 0,
     daily,
     monthly,
     bySource,
-    tableMonths,
+    tableMonths: allMonths,
     tableData,
   };
+}
+
+/**
+ * Take a daily snapshot: total Free-Trial, total Alunos-POA, intersection count.
+ * Upserts by date so it's safe to re-run.
+ */
+export async function takeLeadsSnapshot(): Promise<LeadsSnapshot> {
+  const today = new Date().toISOString().split("T")[0];
+
+  const [totalFreeTrial, alunosPoaEmails, allFreeTrialContacts] =
+    await Promise.all([
+      getTagContactCount(FREE_TRIAL_TAG_ID),
+      getListContactEmails(ALUNOS_POA_LIST_ID),
+      getLeadContacts(FREE_TRIAL_TAG_ID),
+    ]);
+
+  const totalAlunosPoa = alunosPoaEmails.size;
+
+  let converted = 0;
+  for (const c of allFreeTrialContacts) {
+    const email = c.email?.toLowerCase().trim();
+    if (email && alunosPoaEmails.has(email)) converted++;
+  }
+
+  const conversionRate =
+    totalFreeTrial > 0
+      ? parseFloat(((converted / totalFreeTrial) * 100).toFixed(2))
+      : 0;
+
+  const rows = await query<LeadsSnapshot>(
+    `INSERT INTO leads_daily_snapshots
+       (snapshot_date, total_free_trial, total_alunos_poa, converted, conversion_rate)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (snapshot_date) DO UPDATE SET
+       total_free_trial = EXCLUDED.total_free_trial,
+       total_alunos_poa = EXCLUDED.total_alunos_poa,
+       converted        = EXCLUDED.converted,
+       conversion_rate  = EXCLUDED.conversion_rate,
+       created_at       = NOW()
+     RETURNING *`,
+    [today, totalFreeTrial, totalAlunosPoa, converted, conversionRate]
+  );
+
+  logger.info(
+    { date: today, totalFreeTrial, totalAlunosPoa, converted, conversionRate },
+    "Leads daily snapshot saved"
+  );
+
+  return rows[0];
+}
+
+/**
+ * Get the last N daily snapshots ordered by date DESC.
+ */
+export async function getLeadsSnapshots(
+  limit = 90
+): Promise<LeadsSnapshot[]> {
+  return query<LeadsSnapshot>(
+    `SELECT * FROM leads_daily_snapshots ORDER BY snapshot_date DESC LIMIT $1`,
+    [limit]
+  );
 }

@@ -4,7 +4,7 @@ import { getRevenueMetrics } from "../metrics/revenue";
 import { getChurnMetrics } from "../metrics/churn";
 import { getConversionMetrics } from "../metrics/conversion";
 import { getAcquisitionMetrics } from "../metrics/acquisition";
-import { getLeadsMetrics } from "../metrics/leads";
+import { getLeadsMetrics, takeLeadsSnapshot, getLeadsSnapshots } from "../metrics/leads";
 import { getAllActiveSubscriptions, getAllSubscriptionsByStatus } from "../sources/hotmart";
 import { getDbSubscriptionSummary } from "../lib/subscription-db";
 import { query } from "../lib/db";
@@ -282,6 +282,32 @@ router.get("/leads", async (req: Request, res: Response) => {
   } catch (err) {
     req.log.error({ err }, "Error fetching leads");
     res.status(500).json(errorResponse(err instanceof Error ? err.message : "Erro ao carregar métricas de leads"));
+  }
+});
+
+router.get("/leads/snapshots", async (req: Request, res: Response) => {
+  try {
+    const limit = Math.min(parseInt((req.query.limit as string) || "90"), 365);
+    const data = await getLeadsSnapshots(limit);
+    res.json({ error: false, data });
+  } catch (err) {
+    req.log.error({ err }, "Error fetching leads snapshots");
+    res.status(500).json(errorResponse(err instanceof Error ? err.message : "Erro ao buscar snapshots"));
+  }
+});
+
+router.post("/leads/snapshot", async (req: Request, res: Response) => {
+  const token = req.headers["x-admin-token"];
+  if (token !== process.env.ADMIN_SECRET) {
+    res.status(401).json({ error: true, message: "Unauthorized" });
+    return;
+  }
+  try {
+    const snap = await takeLeadsSnapshot();
+    res.json({ error: false, data: snap });
+  } catch (err) {
+    req.log.error({ err }, "Error taking leads snapshot");
+    res.status(500).json(errorResponse(err instanceof Error ? err.message : "Erro ao gerar snapshot"));
   }
 });
 
