@@ -1,11 +1,12 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, TrendingUp, UserMinus, Funnel } from "lucide-react";
+import { LayoutDashboard, TrendingUp, UserMinus, Funnel, Globe } from "lucide-react";
 
 const navItems = [
   { label: "Visão Geral", href: "/", icon: LayoutDashboard },
   { label: "Receita", href: "/revenue", icon: TrendingUp },
   { label: "Churn", href: "/churn", icon: UserMinus },
   { label: "Funil", href: "/funnel", icon: Funnel },
+  { label: "Tráfego", href: "/traffic", icon: Globe },
 ];
 
 export function Sidebar() {
@@ -22,17 +23,17 @@ export function Sidebar() {
           const Icon = item.icon;
           const isActive = location === item.href;
           return (
-            <Link key={item.href} href={item.href}>
-              <a
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                  isActive
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground hover:bg-sidebar-accent"
-                }`}
-              >
-                <Icon className="w-4 h-4 shrink-0" />
-                {item.label}
-              </a>
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                isActive
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-sidebar-accent"
+              }`}
+            >
+              <Icon className="w-4 h-4 shrink-0" />
+              {item.label}
             </Link>
           );
         })}

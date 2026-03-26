@@ -5,6 +5,7 @@ import Overview from "@/pages/Overview";
 import Revenue from "@/pages/Revenue";
 import Churn from "@/pages/Churn";
 import Funnel from "@/pages/Funnel";
+import Traffic from "@/pages/Traffic";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -33,6 +34,7 @@ function Layout() {
           <Route path="/revenue" component={Revenue} />
           <Route path="/churn" component={Churn} />
           <Route path="/funnel" component={Funnel} />
+          <Route path="/traffic" component={Traffic} />
           <Route component={NotFound} />
         </Switch>
       </main>

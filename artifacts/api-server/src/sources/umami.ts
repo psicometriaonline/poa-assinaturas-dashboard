@@ -27,10 +27,17 @@ async function umamiFetch(path: string, params: Record<string, string> = {}): Pr
 }
 
 export interface UmamiStats {
-  pageviews: { value: number };
-  uniques: { value: number };
-  bounces: { value: number };
-  totaltime: { value: number };
+  pageviews: { value: number; prev?: number };
+  uniques?: { value: number; prev?: number };
+  visitors?: { value: number; prev?: number };
+  visits?: { value: number; prev?: number };
+  bounces: { value: number; prev?: number };
+  totaltime: { value: number; prev?: number };
+}
+
+export interface UmamiMetric {
+  x: string;
+  y: number;
 }
 
 export interface UmamiPageView {
@@ -107,6 +114,72 @@ export async function getUtmSources(startAt: number, endAt: number): Promise<Uma
     return (data as UmamiUtmSource[]) ?? [];
   } catch (err) {
     logger.error({ err }, "Error fetching Umami UTM sources");
+    throw err;
+  }
+}
+
+async function getMetrics(type: string, startAt: number, endAt: number): Promise<UmamiMetric[]> {
+  const { websiteId } = getConfig();
+  const data = await umamiFetch(`/websites/${websiteId}/metrics`, {
+    startAt: startAt.toString(),
+    endAt: endAt.toString(),
+    type,
+    limit: "50",
+  });
+  return (data as UmamiMetric[]) ?? [];
+}
+
+export async function getCountries(startAt: number, endAt: number): Promise<UmamiMetric[]> {
+  try {
+    return await getMetrics("country", startAt, endAt);
+  } catch (err) {
+    logger.error({ err }, "Error fetching Umami countries");
+    throw err;
+  }
+}
+
+export async function getUrlPaths(startAt: number, endAt: number): Promise<UmamiMetric[]> {
+  try {
+    return await getMetrics("url", startAt, endAt);
+  } catch (err) {
+    logger.error({ err }, "Error fetching Umami URL paths");
+    throw err;
+  }
+}
+
+export async function getUtmMedium(startAt: number, endAt: number): Promise<UmamiMetric[]> {
+  try {
+    return await getMetrics("utm_medium", startAt, endAt);
+  } catch (err) {
+    logger.error({ err }, "Error fetching Umami UTM medium");
+    throw err;
+  }
+}
+
+export async function getUtmCampaign(startAt: number, endAt: number): Promise<UmamiMetric[]> {
+  try {
+    return await getMetrics("utm_campaign", startAt, endAt);
+  } catch (err) {
+    logger.error({ err }, "Error fetching Umami UTM campaign");
+    throw err;
+  }
+}
+
+export async function getHourlyPageviews(
+  startAt: number,
+  endAt: number
+): Promise<{ pageviews: UmamiPageView[]; sessions: UmamiPageView[] }> {
+  const { websiteId } = getConfig();
+  try {
+    const data = await umamiFetch(`/websites/${websiteId}/pageviews`, {
+      startAt: startAt.toString(),
+      endAt: endAt.toString(),
+      unit: "hour",
+      timezone: "America/Sao_Paulo",
+    });
+    return data as { pageviews: UmamiPageView[]; sessions: UmamiPageView[] };
+  } catch (err) {
+    logger.error({ err }, "Error fetching Umami hourly pageviews");
     throw err;
   }
 }

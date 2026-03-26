@@ -97,6 +97,33 @@ export async function fetchAcquisition(period: PeriodKey) {
   }>(`${BASE}/acquisition?start=${start}&end=${end}`);
 }
 
+export interface UmamiMetric {
+  x: string;
+  y: number;
+}
+
+export interface TrafficData {
+  stats: {
+    pageviews: number;
+    uniques: number;
+    bounceRate: number;
+    avgDurationMin: number;
+  };
+  pageviewsHistory: UmamiMetric[];
+  sessionsHistory: UmamiMetric[];
+  topPaths: UmamiMetric[];
+  utmSource: UmamiMetric[];
+  utmMedium: UmamiMetric[];
+  utmCampaign: UmamiMetric[];
+  countries: UmamiMetric[];
+  hourly: UmamiMetric[];
+}
+
+export async function fetchTraffic(period: PeriodKey) {
+  const { start, end } = getDateRange(period);
+  return apiFetch<TrafficData>(`${BASE}/traffic?start=${start}&end=${end}`);
+}
+
 export function formatBRL(value: number): string {
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",
