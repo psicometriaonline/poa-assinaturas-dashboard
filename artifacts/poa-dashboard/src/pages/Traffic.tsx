@@ -51,9 +51,9 @@ function buildCountryMap(countries: UmamiMetric[]): Record<number, number> {
 }
 
 const UTM_TABS = [
-  { key: "utmSource" as const, label: "Source" },
-  { key: "utmMedium" as const, label: "Medium" },
-  { key: "utmCampaign" as const, label: "Campaign" },
+  { key: "utmSource" as const, label: "Origem" },
+  { key: "utmMedium" as const, label: "Mídia" },
+  { key: "utmCampaign" as const, label: "Campanha" },
 ];
 
 function formatHour(h: string): string {
