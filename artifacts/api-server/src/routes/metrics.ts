@@ -209,6 +209,8 @@ router.get("/traffic", async (req: Request, res: Response) => {
         stats: {
           pageviews: pageviewsVal,
           uniques: uniquesVal,
+          bounces: bouncesVal,
+          totaltime: totaltimeVal,
           bounceRate,
           avgDurationMin,
         },

@@ -91,8 +91,8 @@ export default function Traffic() {
   const lineData =
     d?.pageviewsHistory.map((pv, i) => ({
       label: formatDateLabel(pv.x),
-      "Total Pageviews": pv.y,
-      "Visitantes Únicos": d.sessionsHistory[i]?.y ?? 0,
+      "Pageviews": pv.y,
+      "Sessões": d.sessionsHistory[i]?.y ?? 0,
     })) ?? [];
 
   const utmData = (d ? d[utmTab] : []).map((item) => ({
@@ -166,14 +166,14 @@ export default function Traffic() {
               <Legend wrapperStyle={{ fontSize: 12 }} />
               <Line
                 type="monotone"
-                dataKey="Total Pageviews"
+                dataKey="Pageviews"
                 stroke={CHART_COLOR_1}
                 strokeWidth={2}
                 dot={false}
               />
               <Line
                 type="monotone"
-                dataKey="Visitantes Únicos"
+                dataKey="Sessões"
                 stroke={CHART_COLOR_2}
                 strokeWidth={2}
                 dot={false}

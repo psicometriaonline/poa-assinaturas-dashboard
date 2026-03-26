@@ -106,6 +106,8 @@ export interface TrafficData {
   stats: {
     pageviews: number;
     uniques: number;
+    bounces: number;
+    totaltime: number;
     bounceRate: number;
     avgDurationMin: number;
   };
