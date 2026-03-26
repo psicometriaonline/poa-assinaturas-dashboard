@@ -149,8 +149,10 @@ export async function getDbSubscriptionSummary(
       [monthStart, monthEnd]
     ),
     query<{ sum: string }>(
-      `SELECT COALESCE(SUM(price_value), 0) as sum FROM hotmart_subscriptions
-       WHERE status = 'ACTIVE' AND price_currency IS NOT NULL`
+      `SELECT COALESCE(SUM(CASE WHEN mrr_contribution IS NOT NULL THEN mrr_contribution
+                               WHEN plan_interval = 'ANNUAL' THEN ROUND(price_value / 12, 2)
+                               ELSE price_value END), 0) as sum
+       FROM hotmart_subscriptions WHERE status = 'ACTIVE' AND price_value IS NOT NULL`
     ),
   ]);
 
