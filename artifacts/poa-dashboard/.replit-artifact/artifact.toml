@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Dashboard POA"
+version = "1.0.0"
+id = "artifacts/poa-dashboard"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 20411
+
+[services.development]
+run = "pnpm --filter @workspace/poa-dashboard run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/poa-dashboard", "run", "build" ]
+publicDir = "artifacts/poa-dashboard/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "20411"
+BASE_PATH = "/"
