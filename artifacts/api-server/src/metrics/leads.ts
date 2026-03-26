@@ -133,7 +133,8 @@ export async function getLeadsMetrics(
 
     const email = contact.email?.toLowerCase().trim();
     const accessionDate = email ? subscriberMap.get(email) : undefined;
-    if (accessionDate !== undefined && accessionDate > 0) {
+    const cdateMs = cdate.getTime();
+    if (accessionDate !== undefined && accessionDate > 0 && accessionDate >= cdateMs) {
       totalConversions++;
       monthlyConversions[monthKey] = (monthlyConversions[monthKey] ?? 0) + 1;
       sourceConversions[utmSource] = (sourceConversions[utmSource] ?? 0) + 1;
@@ -142,9 +143,8 @@ export async function getLeadsMetrics(
       sourceMediumConversions[utmSource][utmMedium] =
         (sourceMediumConversions[utmSource][utmMedium] ?? 0) + 1;
 
-      const cdateMs = cdate.getTime();
       const days = (accessionDate - cdateMs) / (1000 * 60 * 60 * 24);
-      if (days >= 0) conversionTimes.push(days);
+      conversionTimes.push(days);
     }
   }
 
