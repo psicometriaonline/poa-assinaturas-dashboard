@@ -5,8 +5,19 @@ export interface RevenueMetrics {
   arr: number;
   arpu: number;
   totalSubscribers: number;
+  totalRevenue: number;
   byPlan: Array<{ plan: string; subscribers: number; revenue: number; percentage: number }>;
-  history: Array<{ month: string; mrr: number; arr: number; arpu: number; byPlan: Record<string, number> }>;
+  history: Array<{
+    month: string;
+    mrr: number;
+    arr: number;
+    arpu: number;
+    newSubs: number;
+    churnedSubs: number;
+    totalSubs: number;
+    churnRate: number;
+    byPlan: Record<string, number>;
+  }>;
 }
 
 function startOfMonth(date: Date): Date {
@@ -18,7 +29,7 @@ function endOfMonth(date: Date): Date {
 }
 
 function monthLabel(date: Date): string {
-  return date.toLocaleDateString("pt-BR", { month: "short", year: "numeric" });
+  return date.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" });
 }
 
 export async function getRevenueMetrics(startDate: Date, endDate: Date): Promise<RevenueMetrics> {
@@ -45,22 +56,32 @@ export async function getRevenueMetrics(startDate: Date, endDate: Date): Promise
   }));
 
   const history: RevenueMetrics["history"] = [];
+  let runningTotal = 0;
   const current = new Date(startDate);
+
   while (current <= endDate) {
     const monthStart = startOfMonth(current);
     const monthEnd = endOfMonth(current);
+    const startTs = monthStart.getTime();
+    const endTs = monthEnd.getTime();
 
-    const monthSubs = await getSubscriptions(
-      "ACTIVE",
-      monthStart.getTime(),
-      monthEnd.getTime()
-    );
+    const [activeSubs, cancelledSubs, overdueSubs, inactiveSubs] = await Promise.all([
+      getSubscriptions("ACTIVE", startTs, endTs),
+      getSubscriptions("CANCELLED", startTs, endTs),
+      getSubscriptions("OVERDUE", startTs, endTs),
+      getSubscriptions("INACTIVE", startTs, endTs),
+    ]);
 
-    const monthMrr = monthSubs.reduce((sum, s) => sum + (s.price?.value ?? 0), 0);
-    const monthCount = monthSubs.length;
+    const newSubs = activeSubs.length;
+    const churnedSubs = cancelledSubs.length + overdueSubs.length + inactiveSubs.length;
+    runningTotal = Math.max(0, runningTotal + newSubs - churnedSubs);
+
+    const monthMrr = activeSubs.reduce((sum, s) => sum + (s.price?.value ?? 0), 0);
+    const churnBase = runningTotal + churnedSubs;
+    const churnRate = churnBase > 0 ? (churnedSubs / churnBase) * 100 : 0;
+
     const monthByPlan: Record<string, number> = {};
-
-    for (const sub of monthSubs) {
+    for (const sub of activeSubs) {
       const plan = sub.plan?.name ?? sub.product?.name ?? "Sem plano";
       monthByPlan[plan] = (monthByPlan[plan] ?? 0) + (sub.price?.value ?? 0);
     }
@@ -69,12 +90,18 @@ export async function getRevenueMetrics(startDate: Date, endDate: Date): Promise
       month: monthLabel(current),
       mrr: monthMrr,
       arr: monthMrr * 12,
-      arpu: monthCount > 0 ? monthMrr / monthCount : 0,
+      arpu: newSubs > 0 ? monthMrr / newSubs : 0,
+      newSubs,
+      churnedSubs,
+      totalSubs: runningTotal,
+      churnRate: parseFloat(churnRate.toFixed(2)),
       byPlan: monthByPlan,
     });
 
     current.setMonth(current.getMonth() + 1);
   }
 
-  return { mrr, arr, arpu, totalSubscribers, byPlan, history };
+  const totalRevenue = history.reduce((sum, h) => sum + h.mrr, 0);
+
+  return { mrr, arr, arpu, totalSubscribers, totalRevenue, byPlan, history };
 }

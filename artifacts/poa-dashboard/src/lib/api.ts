@@ -30,8 +30,19 @@ export async function fetchRevenue(start: string, end: string) {
     arr: number;
     arpu: number;
     totalSubscribers: number;
+    totalRevenue: number;
     byPlan: Array<{ plan: string; subscribers: number; revenue: number; percentage: number }>;
-    history: Array<{ month: string; mrr: number; arr: number; arpu: number; byPlan: Record<string, number> }>;
+    history: Array<{
+      month: string;
+      mrr: number;
+      arr: number;
+      arpu: number;
+      newSubs: number;
+      churnedSubs: number;
+      totalSubs: number;
+      churnRate: number;
+      byPlan: Record<string, number>;
+    }>;
   }>(`${BASE}/revenue?start=${start}&end=${end}`);
 }
 

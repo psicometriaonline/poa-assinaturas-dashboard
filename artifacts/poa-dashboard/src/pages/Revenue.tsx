@@ -1,17 +1,28 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchRevenue, formatBRL, formatPct, formatNumber } from "@/lib/api";
 import { KPICard } from "@/components/KPICard";
 import { usePeriod } from "@/context/PeriodContext";
 import {
-  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Legend,
+  AreaChart, Area, LineChart, Line, BarChart, Bar,
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 
-const COLORS = ["#3b82f6", "#22c55e", "#eab308", "#ef4444", "#a855f7", "#06b6d4"];
+const PLAN_COLORS = ["#3b82f6", "#22c55e", "#eab308", "#ef4444", "#a855f7", "#06b6d4"];
+
+type MrrTab = "breakdown" | "mrr" | "arr";
+
+const tooltip = {
+  contentStyle: { backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: 8 },
+  labelStyle: { color: "#94a3b8" },
+};
+const axTick = { fill: "#94a3b8", fontSize: 11 };
+const grid = <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />;
 
 export default function Revenue() {
   const { dateRange } = usePeriod();
   const { start, end } = dateRange;
+  const [mrrTab, setMrrTab] = useState<MrrTab>("arr");
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["revenue", start, end],
@@ -26,80 +37,233 @@ export default function Revenue() {
     new Set(d?.history.flatMap((h) => Object.keys(h.byPlan ?? {})) ?? [])
   );
 
-  const stackedData = d?.history.map((h) => ({
-    month: h.month,
-    ...h.byPlan,
-  })) ?? [];
+  const stackedData = d?.history.map((h) => ({ month: h.month, ...h.byPlan })) ?? [];
+
+  const totalChurnRate =
+    d?.history.reduce((sum, h) => sum + h.churnedSubs, 0) ?? 0;
+  const totalCancellations = d?.history.reduce((sum, h) => sum + h.churnedSubs, 0) ?? 0;
+
+  const lastMonth = d?.history[d.history.length - 1];
+  const currentChurnRate = lastMonth?.churnRate ?? 0;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div>
-        <h1 className="text-xl font-bold text-foreground">Receita</h1>
-        <p className="text-sm text-muted-foreground">MRR, ARR e breakdown por plano</p>
+        <h1 className="text-xl font-bold text-foreground">Receita & Churn</h1>
+        <p className="text-sm text-muted-foreground">Métricas financeiras e de retenção</p>
       </div>
 
+      {hasError && (
+        <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
+          Erro ao carregar dados: {errMsg}
+        </div>
+      )}
+
+      {/* ── Summary row (image 1) ─────────────────────────────────── */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-card border border-card-border rounded-xl p-6 flex flex-col items-center justify-center text-center gap-2">
+          {isLoading ? (
+            <div className="h-8 w-40 bg-muted rounded animate-pulse" />
+          ) : (
+            <>
+              <p className="text-xs font-semibold text-muted-foreground tracking-widest uppercase">Receita Total</p>
+              <p className="text-3xl font-bold text-foreground tabular-nums">
+                {d ? formatBRL(d.totalRevenue) : "—"}
+              </p>
+              <p className="text-xs text-muted-foreground">no período selecionado</p>
+            </>
+          )}
+        </div>
+
+        <div className="bg-card border border-card-border rounded-xl p-6 flex flex-col items-center justify-center text-center gap-2">
+          {isLoading ? (
+            <div className="h-8 w-24 bg-muted rounded animate-pulse" />
+          ) : (
+            <>
+              <p className="text-xs font-semibold text-muted-foreground tracking-widest uppercase">Assinantes Pagantes</p>
+              <p className="text-3xl font-bold text-foreground tabular-nums">
+                {d ? formatNumber(d.totalSubscribers) : "—"}
+              </p>
+              <p className="text-xs text-muted-foreground">assinantes ativos</p>
+            </>
+          )}
+        </div>
+
+        <div className="bg-card border border-card-border rounded-xl p-6 flex flex-col items-center justify-center text-center gap-2">
+          {isLoading ? (
+            <div className="h-8 w-32 bg-muted rounded animate-pulse" />
+          ) : (
+            <>
+              <p className="text-xs font-semibold text-muted-foreground tracking-widest uppercase">Média por Assinante</p>
+              <p className="text-3xl font-bold text-foreground tabular-nums">
+                {d ? formatBRL(d.arpu) : "—"}
+              </p>
+              <p className="text-xs text-muted-foreground">receita média mensal</p>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* ── Churn KPIs ───────────────────────────────────────────── */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-        <KPICard title="MRR" value={d ? formatBRL(d.mrr) : "—"} loading={isLoading} error={!!hasError} errorMessage={errMsg} />
+        <KPICard title="MRR Atual" value={d ? formatBRL(d.mrr) : "—"} loading={isLoading} error={!!hasError} errorMessage={errMsg} />
         <KPICard title="ARR Projetado" value={d ? formatBRL(d.arr) : "—"} loading={isLoading} error={!!hasError} errorMessage={errMsg} />
-        <KPICard title="ARPU" value={d ? formatBRL(d.arpu) : "—"} subtitle="por assinante" loading={isLoading} error={!!hasError} errorMessage={errMsg} />
-        <KPICard title="Assinantes Ativos" value={d ? formatNumber(d.totalSubscribers) : "—"} loading={isLoading} error={!!hasError} errorMessage={errMsg} />
+        <KPICard title="Cancelamentos no Período" value={d ? formatNumber(totalCancellations) : "—"} loading={isLoading} error={!!hasError} errorMessage={errMsg} invertChange />
+        <KPICard title="Churn Rate" value={d ? formatPct(currentChurnRate) : "—"} subtitle="último mês" loading={isLoading} error={!!hasError} errorMessage={errMsg} invertChange />
       </div>
 
+      {/* ── MRR / ARR chart (image 2) ─────────────────────────────── */}
       <div className="bg-card border border-card-border rounded-xl p-5">
-        <h2 className="text-sm font-semibold text-foreground mb-4">Evolução do MRR</h2>
-        {isLoading ? <div className="h-52 bg-muted rounded animate-pulse" /> : (
-          <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={d?.history ?? []}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-              <XAxis dataKey="month" tick={{ fill: "#94a3b8", fontSize: 11 }} />
-              <YAxis tick={{ fill: "#94a3b8", fontSize: 11 }} tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`} />
-              <Tooltip
-                contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: 8 }}
-                formatter={(v: number) => [formatBRL(v), "MRR"]}
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-semibold text-foreground">Crescimento de Receita</h2>
+          <div className="flex items-center gap-0.5 bg-secondary rounded-lg p-1">
+            {([
+              { key: "breakdown", label: "Por Plano" },
+              { key: "mrr", label: "MRR" },
+              { key: "arr", label: "ARR" },
+            ] as { key: MrrTab; label: string }[]).map((t) => (
+              <button
+                key={t.key}
+                onClick={() => setMrrTab(t.key)}
+                className={`px-3 py-1 text-xs rounded-md font-medium transition-colors ${
+                  mrrTab === t.key
+                    ? "bg-primary text-primary-foreground shadow"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {isLoading ? (
+          <div className="h-60 bg-muted rounded animate-pulse" />
+        ) : mrrTab === "breakdown" ? (
+          <ResponsiveContainer width="100%" height={240}>
+            <BarChart data={stackedData}>
+              {grid}
+              <XAxis dataKey="month" tick={axTick} />
+              <YAxis tick={axTick} tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`} />
+              <Tooltip {...tooltip} formatter={(v: number, name: string) => [formatBRL(v), name]} />
+              <Legend wrapperStyle={{ color: "#94a3b8", fontSize: 12 }} />
+              {allPlans.map((plan, i) => (
+                <Bar key={plan} dataKey={plan} stackId="a" fill={PLAN_COLORS[i % PLAN_COLORS.length]} />
+              ))}
+            </BarChart>
+          </ResponsiveContainer>
+        ) : (
+          <ResponsiveContainer width="100%" height={240}>
+            <AreaChart data={d?.history ?? []}>
+              <defs>
+                <linearGradient id="gradRevenue" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.02} />
+                </linearGradient>
+              </defs>
+              {grid}
+              <XAxis dataKey="month" tick={axTick} />
+              <YAxis
+                tick={axTick}
+                tickFormatter={(v) =>
+                  v >= 1000 ? `R$${(v / 1000).toFixed(0)}k` : `R$${v}`
+                }
               />
-              <Line type="monotone" dataKey="mrr" stroke="#3b82f6" strokeWidth={2} dot={false} />
-            </LineChart>
+              <Tooltip
+                {...tooltip}
+                formatter={(v: number) => [
+                  formatBRL(v),
+                  mrrTab === "mrr" ? "MRR" : "ARR",
+                ]}
+              />
+              <Area
+                type="monotone"
+                dataKey={mrrTab}
+                stroke="#3b82f6"
+                strokeWidth={2}
+                fill="url(#gradRevenue)"
+                dot={false}
+              />
+            </AreaChart>
           </ResponsiveContainer>
         )}
       </div>
 
-      {allPlans.length > 0 && (
-        <div className="bg-card border border-card-border rounded-xl p-5">
-          <h2 className="text-sm font-semibold text-foreground mb-4">Receita por Plano (mensal)</h2>
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={stackedData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-              <XAxis dataKey="month" tick={{ fill: "#94a3b8", fontSize: 11 }} />
-              <YAxis tick={{ fill: "#94a3b8", fontSize: 11 }} tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`} />
+      {/* ── Subscriptions chart (image 3) ────────────────────────── */}
+      <div className="bg-card border border-card-border rounded-xl p-5">
+        <h2 className="text-sm font-semibold text-foreground mb-4">Inscrições</h2>
+        {isLoading ? (
+          <div className="h-60 bg-muted rounded animate-pulse" />
+        ) : (
+          <ResponsiveContainer width="100%" height={240}>
+            <AreaChart data={d?.history ?? []}>
+              <defs>
+                <linearGradient id="gradTotal" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.25} />
+                  <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.02} />
+                </linearGradient>
+              </defs>
+              {grid}
+              <XAxis dataKey="month" tick={axTick} />
+              <YAxis tick={axTick} allowDecimals={false} />
               <Tooltip
-                contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: 8 }}
-                formatter={(v: number, name: string) => [formatBRL(v), name]}
+                {...tooltip}
+                formatter={(v: number, name: string) => [formatNumber(v), name]}
               />
               <Legend wrapperStyle={{ color: "#94a3b8", fontSize: 12 }} />
-              {allPlans.map((plan, i) => (
-                <Bar key={plan} dataKey={plan} stackId="a" fill={COLORS[i % COLORS.length]} />
-              ))}
-            </BarChart>
+              <Area
+                type="monotone"
+                dataKey="totalSubs"
+                name="Total de Assinantes"
+                stroke="#3b82f6"
+                strokeWidth={2}
+                fill="url(#gradTotal)"
+                dot={false}
+              />
+              <Line
+                type="monotone"
+                dataKey="newSubs"
+                name="Novos"
+                stroke="#22c55e"
+                strokeWidth={1.5}
+                dot={false}
+              />
+              <Line
+                type="monotone"
+                dataKey="churnedSubs"
+                name="Cancelamentos"
+                stroke="#ef4444"
+                strokeWidth={1.5}
+                dot={false}
+              />
+            </AreaChart>
           </ResponsiveContainer>
-        </div>
-      )}
+        )}
+      </div>
 
+      {/* ── Plan breakdown table ──────────────────────────────────── */}
       {d?.byPlan && d.byPlan.length > 0 && (
         <div className="bg-card border border-card-border rounded-xl p-5">
-          <h2 className="text-sm font-semibold text-foreground mb-4">Breakdown atual por plano</h2>
+          <h2 className="text-sm font-semibold text-foreground mb-4">Breakdown por Plano</h2>
           <table className="w-full text-sm">
             <thead>
               <tr className="text-muted-foreground text-left border-b border-border">
                 <th className="pb-2 font-medium">Plano</th>
                 <th className="pb-2 font-medium text-right">Assinantes</th>
                 <th className="pb-2 font-medium text-right">Receita</th>
-                <th className="pb-2 font-medium text-right">%</th>
+                <th className="pb-2 font-medium text-right">% do MRR</th>
               </tr>
             </thead>
             <tbody>
               {d.byPlan.map((p) => (
                 <tr key={p.plan} className="border-b border-border/50">
-                  <td className="py-2.5">{p.plan}</td>
+                  <td className="py-2.5 flex items-center gap-2">
+                    <span
+                      className="inline-block w-2 h-2 rounded-full shrink-0"
+                      style={{ background: PLAN_COLORS[d.byPlan.indexOf(p) % PLAN_COLORS.length] }}
+                    />
+                    {p.plan}
+                  </td>
                   <td className="py-2.5 text-right">{formatNumber(p.subscribers)}</td>
                   <td className="py-2.5 text-right">{formatBRL(p.revenue)}</td>
                   <td className="py-2.5 text-right">{formatPct(p.percentage)}</td>
@@ -107,6 +271,41 @@ export default function Revenue() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* ── Monthly churn table ───────────────────────────────────── */}
+      {d?.history && d.history.length > 0 && (
+        <div className="bg-card border border-card-border rounded-xl p-5">
+          <h2 className="text-sm font-semibold text-foreground mb-4">Evolução Mensal</h2>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-muted-foreground text-left border-b border-border">
+                  <th className="pb-2 font-medium">Mês</th>
+                  <th className="pb-2 font-medium text-right">MRR</th>
+                  <th className="pb-2 font-medium text-right">ARR</th>
+                  <th className="pb-2 font-medium text-right">Total Assinantes</th>
+                  <th className="pb-2 font-medium text-right">Novos</th>
+                  <th className="pb-2 font-medium text-right">Cancelamentos</th>
+                  <th className="pb-2 font-medium text-right">Churn Rate</th>
+                </tr>
+              </thead>
+              <tbody>
+                {d.history.map((h) => (
+                  <tr key={h.month} className="border-b border-border/50">
+                    <td className="py-2.5">{h.month}</td>
+                    <td className="py-2.5 text-right">{formatBRL(h.mrr)}</td>
+                    <td className="py-2.5 text-right">{formatBRL(h.arr)}</td>
+                    <td className="py-2.5 text-right">{formatNumber(h.totalSubs)}</td>
+                    <td className="py-2.5 text-right text-green-400">+{formatNumber(h.newSubs)}</td>
+                    <td className="py-2.5 text-right text-red-400">-{formatNumber(h.churnedSubs)}</td>
+                    <td className="py-2.5 text-right">{formatPct(h.churnRate)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>
