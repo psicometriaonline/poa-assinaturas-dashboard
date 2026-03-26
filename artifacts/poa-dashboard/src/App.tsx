@@ -6,6 +6,7 @@ import { PeriodProvider } from "@/context/PeriodContext";
 import Overview from "@/pages/Overview";
 import Revenue from "@/pages/Revenue";
 import Funnel from "@/pages/Funnel";
+import Leads from "@/pages/Leads";
 import Traffic from "@/pages/Traffic";
 import Admin from "@/pages/Admin";
 
@@ -40,6 +41,7 @@ function Layout() {
             <Route path="/" component={Overview} />
             <Route path="/revenue" component={Revenue} />
             <Route path="/funnel" component={Funnel} />
+            <Route path="/leads" component={Leads} />
             <Route path="/traffic" component={Traffic} />
             <Route path="/admin" component={Admin} />
             <Route component={NotFound} />

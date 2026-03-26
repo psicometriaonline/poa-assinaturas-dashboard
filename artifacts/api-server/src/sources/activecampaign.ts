@@ -25,6 +25,13 @@ async function acFetch(path: string, params: Record<string, string> = {}): Promi
   return response.json();
 }
 
+export interface ACFieldValue {
+  id: string;
+  contact: string;
+  field: string;
+  value: string;
+}
+
 export interface ACContact {
   id: string;
   email: string;
@@ -32,6 +39,7 @@ export interface ACContact {
   lastName: string;
   cdate: string;
   fields?: ACField[];
+  fieldValues?: ACFieldValue[];
   tags?: string[];
 }
 
@@ -128,4 +136,34 @@ export async function getContactsWithFields(
 ): Promise<ACContact[]> {
   const contacts = await getContacts(createdAfter, createdBefore);
   return contacts;
+}
+
+export async function getLeadContacts(
+  tagId: string,
+  createdAfter: string,
+  createdBefore: string
+): Promise<ACContact[]> {
+  try {
+    return await paginateContacts({
+      "filters[tagid]": tagId,
+      "filters[created_after]": createdAfter,
+      "filters[created_before]": createdBefore,
+      include: "fieldValues",
+    });
+  } catch (err) {
+    logger.error({ err }, "Error fetching lead contacts from AC");
+    throw err;
+  }
+}
+
+export function getContactUtmField(contact: ACContact, fieldId: string): string {
+  const fv = contact.fieldValues?.find((f) => f.field === fieldId);
+  if (fv?.value?.trim()) return fv.value.trim();
+  const legacyMap: Record<string, string> = { "13": "utm_source", "14": "utm_medium" };
+  const legacyKey = legacyMap[fieldId];
+  if (legacyKey) {
+    const f = contact.fields?.find((fi) => fi.field.toLowerCase().includes(legacyKey));
+    if (f?.value?.trim()) return f.value.trim();
+  }
+  return "";
 }

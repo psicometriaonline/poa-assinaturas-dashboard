@@ -112,6 +112,43 @@ export async function fetchTraffic(start: string, end: string) {
   return apiFetch<TrafficData>(`${BASE}/traffic?start=${start}&end=${end}`);
 }
 
+export interface LeadsData {
+  totalLeads: number;
+  totalConversions: number;
+  conversionRate: number;
+  avgDaysToConvert: number;
+  daily: Array<{ date: string; leads: number }>;
+  monthly: Array<{
+    month: string;
+    monthKey: string;
+    leads: number;
+    conversions: number;
+    conversionRate: number;
+  }>;
+  bySource: Array<{
+    source: string;
+    leads: number;
+    conversions: number;
+    rate: number;
+    mediums: Array<{ medium: string; leads: number; conversions: number }>;
+  }>;
+  tableMonths: string[];
+  tableData: Array<{
+    source: string;
+    total: number;
+    byMonth: Record<string, number>;
+    mediums: Array<{
+      medium: string;
+      total: number;
+      byMonth: Record<string, number>;
+    }>;
+  }>;
+}
+
+export async function fetchLeads(start: string, end: string) {
+  return apiFetch<LeadsData>(`${BASE}/leads?start=${start}&end=${end}`);
+}
+
 export function formatBRL(value: number): string {
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",

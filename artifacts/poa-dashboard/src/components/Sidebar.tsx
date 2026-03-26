@@ -1,10 +1,11 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, TrendingUp, Funnel, Globe, Settings } from "lucide-react";
+import { LayoutDashboard, TrendingUp, Funnel, Globe, Settings, Users } from "lucide-react";
 
 const navItems = [
   { label: "Visão Geral", href: "/", icon: LayoutDashboard },
   { label: "Receita & Churn", href: "/revenue", icon: TrendingUp },
   { label: "Funil", href: "/funnel", icon: Funnel },
+  { label: "Leads e Conversão", href: "/leads", icon: Users },
   { label: "Tráfego", href: "/traffic", icon: Globe },
 ];
 

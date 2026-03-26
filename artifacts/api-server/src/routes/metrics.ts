@@ -4,6 +4,7 @@ import { getRevenueMetrics } from "../metrics/revenue";
 import { getChurnMetrics } from "../metrics/churn";
 import { getConversionMetrics } from "../metrics/conversion";
 import { getAcquisitionMetrics } from "../metrics/acquisition";
+import { getLeadsMetrics } from "../metrics/leads";
 import { getAllActiveSubscriptions, getAllSubscriptionsByStatus } from "../sources/hotmart";
 import { getDbSubscriptionSummary } from "../lib/subscription-db";
 import { query } from "../lib/db";
@@ -264,6 +265,22 @@ router.get("/debug/subscriptions", async (_req: Request, res: Response) => {
     res.json({ grandTotal, byStatus: results });
   } catch (err) {
     res.status(500).json({ error: String(err) });
+  }
+});
+
+router.get("/leads", async (req: Request, res: Response) => {
+  try {
+    const startParam = (req.query.start as string) || "2015-01-01";
+    const endParam = (req.query.end as string) || new Date().toISOString().split("T")[0];
+
+    const startDate = new Date(`${startParam}T00:00:00.000Z`);
+    const endDate = new Date(`${endParam}T23:59:59.999Z`);
+
+    const cacheKey = `leads:${startParam}:${endParam}`;
+    const data = await withCache(cacheKey, () => getLeadsMetrics(startDate, endDate));
+    res.json({ data });
+  } catch (err) {
+    res.status(500).json({ error: String(err), message: "Erro ao carregar métricas de leads" });
   }
 });
 
