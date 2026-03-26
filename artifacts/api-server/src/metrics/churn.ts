@@ -1,4 +1,4 @@
-import { getSubscriptions } from "../sources/hotmart";
+import { getAllSubscriptionsByStatus, getSubscriptions, type HotmartSubscription } from "../sources/hotmart";
 
 export interface ChurnMetrics {
   totalCancellations: number;
@@ -26,7 +26,19 @@ function monthLabel(date: Date): string {
   return date.toLocaleDateString("pt-BR", { month: "short", year: "numeric" });
 }
 
+function inRange(s: HotmartSubscription, start: number, end: number): boolean {
+  const ts = s.cancellation_date ?? s.accession_date;
+  if (!ts) return false;
+  return ts >= start && ts <= end;
+}
+
 export async function getChurnMetrics(startDate: Date, endDate: Date): Promise<ChurnMetrics> {
+  const [allCancelled, allDelayed, allInactive] = await Promise.all([
+    getAllSubscriptionsByStatus("CANCELLED"),
+    getAllSubscriptionsByStatus("DELAYED"),
+    getAllSubscriptionsByStatus("INACTIVE"),
+  ]);
+
   const history: ChurnMetrics["history"] = [];
   let totalCancellations = 0;
   let voluntaryChurn = 0;
@@ -39,15 +51,14 @@ export async function getChurnMetrics(startDate: Date, endDate: Date): Promise<C
     const startTs = monthStart.getTime();
     const endTs = monthEnd.getTime();
 
-    const [cancelled, overdue, inactive, active] = await Promise.all([
-      getSubscriptions("CANCELLED", startTs, endTs),
-      getSubscriptions("OVERDUE", startTs, endTs),
-      getSubscriptions("INACTIVE", startTs, endTs),
-      getSubscriptions("ACTIVE", startTs, endTs),
-    ]);
+    const monthCancelled = allCancelled.filter(s => inRange(s, startTs, endTs));
+    const monthDelayed = allDelayed.filter(s => inRange(s, startTs, endTs));
+    const monthInactive = allInactive.filter(s => inRange(s, startTs, endTs));
 
-    const monthVoluntary = cancelled.length;
-    const monthInvoluntary = overdue.length + inactive.length;
+    const active = await getSubscriptions("ACTIVE", startTs, endTs);
+
+    const monthVoluntary = monthCancelled.length;
+    const monthInvoluntary = monthDelayed.length + monthInactive.length;
     const monthTotal = monthVoluntary + monthInvoluntary;
     const totalBase = active.length + monthTotal;
     const churnRate = totalBase > 0 ? (monthTotal / totalBase) * 100 : 0;

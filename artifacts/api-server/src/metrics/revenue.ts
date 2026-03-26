@@ -1,4 +1,4 @@
-import { getAllActiveSubscriptions, getSubscriptions } from "../sources/hotmart";
+import { getAllActiveSubscriptions, getAllSubscriptionsByStatus, getSubscriptions, type HotmartSubscription } from "../sources/hotmart";
 
 export interface RevenueMetrics {
   mrr: number;
@@ -32,8 +32,24 @@ function monthLabel(date: Date): string {
   return date.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" });
 }
 
+function inRange(ts: number | undefined, start: number, end: number): boolean {
+  if (!ts) return false;
+  return ts >= start && ts <= end;
+}
+
+function planName(s: HotmartSubscription): string {
+  return s.plan?.name ?? s.product?.name ?? "Sem plano";
+}
+
 export async function getRevenueMetrics(startDate: Date, endDate: Date): Promise<RevenueMetrics> {
-  const activeSubscriptions = await getAllActiveSubscriptions();
+  const [activeSubscriptions, allCancelled, allDelayed, allInactive] = await Promise.all([
+    getAllActiveSubscriptions(),
+    getAllSubscriptionsByStatus("CANCELLED"),
+    getAllSubscriptionsByStatus("DELAYED"),
+    getAllSubscriptionsByStatus("INACTIVE"),
+  ]);
+
+  const allNonActive = [...allCancelled, ...allDelayed, ...allInactive];
 
   const totalSubscribers = activeSubscriptions.length;
   const mrr = activeSubscriptions.reduce((sum, s) => sum + (s.price?.value ?? 0), 0);
@@ -42,7 +58,7 @@ export async function getRevenueMetrics(startDate: Date, endDate: Date): Promise
 
   const byPlanMap: Record<string, { subscribers: number; revenue: number }> = {};
   for (const sub of activeSubscriptions) {
-    const plan = sub.plan?.name ?? sub.product?.name ?? "Sem plano";
+    const plan = planName(sub);
     if (!byPlanMap[plan]) byPlanMap[plan] = { subscribers: 0, revenue: 0 };
     byPlanMap[plan].subscribers += 1;
     byPlanMap[plan].revenue += sub.price?.value ?? 0;
@@ -65,15 +81,15 @@ export async function getRevenueMetrics(startDate: Date, endDate: Date): Promise
     const startTs = monthStart.getTime();
     const endTs = monthEnd.getTime();
 
-    const [activeSubs, cancelledSubs, overdueSubs, inactiveSubs] = await Promise.all([
-      getSubscriptions("ACTIVE", startTs, endTs),
-      getSubscriptions("CANCELLED", startTs, endTs),
-      getSubscriptions("OVERDUE", startTs, endTs),
-      getSubscriptions("INACTIVE", startTs, endTs),
-    ]);
+    const activeSubs = await getSubscriptions("ACTIVE", startTs, endTs);
+
+    const churnedThisMonth = allNonActive.filter(s => {
+      const ts = s.cancellation_date ?? s.accession_date;
+      return inRange(ts, startTs, endTs);
+    });
 
     const newSubs = activeSubs.length;
-    const churnedSubs = cancelledSubs.length + overdueSubs.length + inactiveSubs.length;
+    const churnedSubs = churnedThisMonth.length;
     runningTotal = Math.max(0, runningTotal + newSubs - churnedSubs);
 
     const monthMrr = activeSubs.reduce((sum, s) => sum + (s.price?.value ?? 0), 0);
@@ -82,7 +98,7 @@ export async function getRevenueMetrics(startDate: Date, endDate: Date): Promise
 
     const monthByPlan: Record<string, number> = {};
     for (const sub of activeSubs) {
-      const plan = sub.plan?.name ?? sub.product?.name ?? "Sem plano";
+      const plan = planName(sub);
       monthByPlan[plan] = (monthByPlan[plan] ?? 0) + (sub.price?.value ?? 0);
     }
 

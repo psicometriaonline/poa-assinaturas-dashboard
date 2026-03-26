@@ -12,20 +12,26 @@ async function getAccessToken(): Promise<string> {
     return accessToken;
   }
 
-  const params = new URLSearchParams({
-    grant_type: "client_credentials",
-    client_id: CLIENT_ID,
-    client_secret: CLIENT_SECRET,
-  });
+  if (!CLIENT_ID || !CLIENT_SECRET) {
+    throw new Error("Hotmart credentials not configured (HOTMART_CLIENT_ID / HOTMART_CLIENT_SECRET missing)");
+  }
 
-  const response = await fetch("https://api-sec-vlc.hotmart.com/security/oauth/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: params,
-  });
+  const basicAuth = Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString("base64");
+
+  const response = await fetch(
+    "https://api-sec-vlc.hotmart.com/security/oauth/token?grant_type=client_credentials",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${basicAuth}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+    }
+  );
 
   if (!response.ok) {
-    throw new Error(`Hotmart OAuth failed: ${response.status} ${await response.text()}`);
+    const body = await response.text();
+    throw new Error(`Hotmart OAuth failed: ${response.status} ${body}`);
   }
 
   const data = (await response.json()) as { access_token: string; expires_in: number };
@@ -47,13 +53,15 @@ async function hotmartFetch(path: string, params: Record<string, string> = {}): 
   });
 
   if (!response.ok) {
-    throw new Error(`Hotmart API error ${response.status}: ${await response.text()}`);
+    const body = await response.text();
+    logger.error({ url: url.toString(), status: response.status, body }, "Hotmart API error");
+    throw new Error(`Hotmart API error ${response.status}: ${body}`);
   }
 
   return response.json();
 }
 
-export type SubscriptionStatus = "ACTIVE" | "CANCELLED" | "OVERDUE" | "INACTIVE" | "DELAYED";
+export type SubscriptionStatus = "ACTIVE" | "CANCELLED" | "INACTIVE" | "DELAYED" | "STARTED";
 
 export interface HotmartSubscription {
   subscription_id: string;
@@ -129,12 +137,25 @@ export async function getAllActiveSubscriptions(): Promise<HotmartSubscription[]
   try {
     return await paginateAll<HotmartSubscription>(
       "/subscriptions",
-      { status: "ACTIVE", max_results: "50" },
+      { status: "ACTIVE", max_results: "500" },
       "items"
     );
   } catch (err) {
     logger.error({ err }, "Error fetching all active Hotmart subscriptions");
     throw err;
+  }
+}
+
+export async function getAllSubscriptionsByStatus(status: Exclude<SubscriptionStatus, "ACTIVE">): Promise<HotmartSubscription[]> {
+  try {
+    return await paginateAll<HotmartSubscription>(
+      "/subscriptions",
+      { status, max_results: "500" },
+      "items"
+    );
+  } catch (err) {
+    logger.error({ err }, `Error fetching all ${status} subscriptions`);
+    return [];
   }
 }
 

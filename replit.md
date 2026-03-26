@@ -1,96 +1,119 @@
-# Workspace
+# Dashboard POA — Psicometria Online
 
-## Overview
+## Visão Geral
 
-pnpm workspace monorepo using TypeScript. Each package manages its own dependencies.
+Dashboard estratégico de analytics de assinaturas para a Psicometria Online.  
+Integra **Hotmart** (assinaturas/receita), **ActiveCampaign** (contatos/conversão) e **Umami Cloud** (tráfego web).
+
+Dark-themed, em português do Brasil, com React + Vite no frontend e Express no backend em um monorepo pnpm.
+
+---
 
 ## Stack
 
-- **Monorepo tool**: pnpm workspaces
-- **Node.js version**: 24
-- **Package manager**: pnpm
-- **TypeScript version**: 5.9
-- **API framework**: Express 5
-- **Database**: PostgreSQL + Drizzle ORM
-- **Validation**: Zod (`zod/v4`), `drizzle-zod`
-- **API codegen**: Orval (from OpenAPI spec)
-- **Build**: esbuild (CJS bundle)
+- **Monorepo**: pnpm workspaces
+- **Node.js**: 24
+- **TypeScript**: 5.9
+- **Frontend**: React + Vite + Recharts + Tailwind (artifacts/poa-dashboard)
+- **Backend**: Express 5 (artifacts/api-server)
+- **Build API**: esbuild
 
-## Structure
+---
+
+## Estrutura
 
 ```text
-artifacts-monorepo/
-├── artifacts/              # Deployable applications
-│   └── api-server/         # Express API server
-├── lib/                    # Shared libraries
-│   ├── api-spec/           # OpenAPI spec + Orval codegen config
-│   ├── api-client-react/   # Generated React Query hooks
-│   ├── api-zod/            # Generated Zod schemas from OpenAPI
-│   └── db/                 # Drizzle ORM schema + DB connection
-├── scripts/                # Utility scripts (single workspace package)
-│   └── src/                # Individual .ts scripts, run via `pnpm --filter @workspace/scripts run <script>`
-├── pnpm-workspace.yaml     # pnpm workspace (artifacts/*, lib/*, lib/integrations/*, scripts)
-├── tsconfig.base.json      # Shared TS options (composite, bundler resolution, es2022)
-├── tsconfig.json           # Root TS project references
-└── package.json            # Root package with hoisted devDeps
+artifacts/
+├── api-server/          # Express API — integra Hotmart, AC, Umami
+└── poa-dashboard/       # Frontend React — dashboard dark-theme
 ```
 
-## TypeScript & Composite Projects
+---
 
-Every package extends `tsconfig.base.json` which sets `composite: true`. The root `tsconfig.json` lists all packages as project references. This means:
+## Backend — artifacts/api-server
 
-- **Always typecheck from the root** — run `pnpm run typecheck` (which runs `tsc --build --emitDeclarationOnly`). This builds the full dependency graph so that cross-package imports resolve correctly. Running `tsc` inside a single package will fail if its dependencies haven't been built yet.
-- **`emitDeclarationOnly`** — we only emit `.d.ts` files during typecheck; actual JS bundling is handled by esbuild/tsx/vite...etc, not `tsc`.
-- **Project references** — when package A depends on package B, A's `tsconfig.json` must list B in its `references` array. `tsc --build` uses this to determine build order and skip up-to-date packages.
+### Fontes de dados
 
-## Root Scripts
+| Fonte           | Arquivo                          | Status                                                    |
+|-----------------|----------------------------------|-----------------------------------------------------------|
+| Hotmart         | `src/sources/hotmart.ts`         | ACTIVE/DELAYED/INACTIVE ✓ · CANCELLED retorna 400 (tratado como []) |
+| ActiveCampaign  | `src/sources/activecampaign.ts`  | ✓ Funcionando                                             |
+| Umami Cloud     | `src/sources/umami.ts`           | ✓ API conectada — dados dependem de tracking no site      |
 
-- `pnpm run build` — runs `typecheck` first, then recursively runs `build` in all packages that define it
-- `pnpm run typecheck` — runs `tsc --build --emitDeclarationOnly` using project references
+### Endpoints
 
-## Packages
+- `GET /api/metrics/overview` — KPIs do mês atual (MRR, novos assinantes, cancelamentos, conversão)
+- `GET /api/metrics/revenue?start=&end=` — Receita histórica + breakdown por plano
+- `GET /api/metrics/churn?start=&end=` — Métricas de churn por mês
+- `GET /api/metrics/funnel?start=&end=` — Funil de conversão
+- `GET /api/metrics/acquisition?start=&end=` — Aquisição de clientes
+- `GET /api/metrics/traffic?start=&end=` — Tráfego web (Umami)
 
-### `artifacts/api-server` (`@workspace/api-server`)
+### Cache
 
-Express 5 API server. Routes live in `src/routes/` and use `@workspace/api-zod` for request and response validation and `@workspace/db` for persistence.
+In-memory com TTL de 1 hora.
 
-- Entry: `src/index.ts` — reads `PORT`, starts Express
-- App setup: `src/app.ts` — mounts CORS, JSON/urlencoded parsing, routes at `/api`
-- Routes: `src/routes/index.ts` mounts sub-routers; `src/routes/health.ts` exposes `GET /health` (full path: `/api/health`)
-- Depends on: `@workspace/db`, `@workspace/api-zod`
-- `pnpm --filter @workspace/api-server run dev` — run the dev server
-- `pnpm --filter @workspace/api-server run build` — production esbuild bundle (`dist/index.cjs`)
-- Build bundles an allowlist of deps (express, cors, pg, drizzle-orm, zod, etc.) and externalizes the rest
+### Limitações conhecidas do Hotmart API
 
-### `lib/db` (`@workspace/db`)
+1. `status=CANCELLED` sempre retorna 400 para estas credenciais (bug/restrição da API). Tratado com `return []`.
+2. `accession_date` filter **só funciona com `status=ACTIVE`**. Para DELAYED/INACTIVE, busca-se tudo sem filtro e filtra-se localmente por `accession_date`.
+3. `getAllSubscriptionsByStatus("CANCELLED")` falha — dados de churn voluntário aparecem como 0.
 
-Database layer using Drizzle ORM with PostgreSQL. Exports a Drizzle client instance and schema models.
+---
 
-- `src/index.ts` — creates a `Pool` + Drizzle instance, exports schema
-- `src/schema/index.ts` — barrel re-export of all models
-- `src/schema/<modelname>.ts` — table definitions with `drizzle-zod` insert schemas (no models definitions exist right now)
-- `drizzle.config.ts` — Drizzle Kit config (requires `DATABASE_URL`, automatically provided by Replit)
-- Exports: `.` (pool, db, schema), `./schema` (schema only)
+## Frontend — artifacts/poa-dashboard
 
-Production migrations are handled by Replit when publishing. In development, we just use `pnpm --filter @workspace/db run push`, and we fallback to `pnpm --filter @workspace/db run push-force`.
+### Páginas
 
-### `lib/api-spec` (`@workspace/api-spec`)
+| Rota        | Componente             | Descrição                                        |
+|-------------|------------------------|--------------------------------------------------|
+| `/`         | `Overview.tsx`         | Visão Geral — MRR, assinantes, evolução          |
+| `/revenue`  | `Revenue.tsx`          | Receita & Churn — gráficos + tabela mensal       |
+| `/funnel`   | `Funnel.tsx`           | Funil de conversão                               |
+| `/traffic`  | `Traffic.tsx`          | Análise de Tráfego (Umami)                       |
 
-Owns the OpenAPI 3.1 spec (`openapi.yaml`) and the Orval config (`orval.config.ts`). Running codegen produces output into two sibling packages:
+### Contexto global de período
 
-1. `lib/api-client-react/src/generated/` — React Query hooks + fetch client
-2. `lib/api-zod/src/generated/` — Zod schemas
+- `src/context/PeriodContext.tsx` — estado global do período selecionado
+- `src/components/GlobalPeriodSelector.tsx` — seletor no header fixo
+- 9 opções: Hoje, Ontem, 7d, 30d, 3m, 6m, 1a, **Todo período** (padrão), Personalizado
+- `computeDateRange("all")` → start = "2015-01-01", end = hoje
 
-Run codegen: `pnpm --filter @workspace/api-spec run codegen`
+### API client
 
-### `lib/api-zod` (`@workspace/api-zod`)
+`src/lib/api.ts` — todas as funções aceitam `(start: string, end: string)`.
 
-Generated Zod schemas from the OpenAPI spec (e.g. `HealthCheckResponse`). Used by `api-server` for response validation.
+---
 
-### `lib/api-client-react` (`@workspace/api-client-react`)
+## Secrets necessários
 
-Generated React Query hooks and fetch client from the OpenAPI spec (e.g. `useHealthCheck`, `healthCheck`).
+| Secret                  | Uso                           |
+|-------------------------|-------------------------------|
+| `HOTMART_CLIENT_ID`     | OAuth Hotmart                 |
+| `HOTMART_CLIENT_SECRET` | OAuth Hotmart                 |
+| `AC_API_KEY`            | ActiveCampaign API key        |
+| `AC_BASE_URL`           | ActiveCampaign base URL       |
+| `UMAMI_API_TOKEN`       | Umami Cloud API token         |
+| `UMAMI_BASE_URL`        | Umami API base URL            |
+| `UMAMI_WEBSITE_ID`      | ID do website no Umami        |
 
-### `scripts` (`@workspace/scripts`)
+---
 
-Utility scripts package. Each script is a `.ts` file in `src/` with a corresponding npm script in `package.json`. Run scripts via `pnpm --filter @workspace/scripts run <script>`. Scripts can import any workspace package (e.g., `@workspace/db`) by adding it as a dependency in `scripts/package.json`.
+## Como rodar
+
+```bash
+# API server (porta 8080)
+pnpm --filter @workspace/api-server run dev
+
+# Dashboard frontend
+pnpm --filter @workspace/poa-dashboard run dev
+```
+
+---
+
+## TypeScript
+
+```bash
+pnpm --filter @workspace/api-server typecheck
+pnpm --filter @workspace/poa-dashboard typecheck
+```

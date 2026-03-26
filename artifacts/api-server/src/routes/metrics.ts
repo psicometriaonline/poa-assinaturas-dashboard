@@ -4,7 +4,7 @@ import { getRevenueMetrics } from "../metrics/revenue";
 import { getChurnMetrics } from "../metrics/churn";
 import { getConversionMetrics } from "../metrics/conversion";
 import { getAcquisitionMetrics } from "../metrics/acquisition";
-import { getAllActiveSubscriptions, getSubscriptions } from "../sources/hotmart";
+import { getAllActiveSubscriptions, getAllSubscriptionsByStatus, getSubscriptions } from "../sources/hotmart";
 import { getContacts } from "../sources/activecampaign";
 import {
   getWebsiteStats,
@@ -44,35 +44,49 @@ router.get("/overview", async (req: Request, res: Response) => {
       const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       const prevMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
 
+      const startTs = monthStart.getTime();
+      const endTs = monthEnd.getTime();
+      const prevStartTs = prevMonthStart.getTime();
+      const prevEndTs = prevMonthEnd.getTime();
+
       const [
         activeNow,
         newThisMonth,
-        cancelledThisMonth,
-        overdueThisMonth,
-        inactiveThisMonth,
         activePrev,
-        cancelledPrev,
-        overduePrev,
-        inactivePrev,
+        allCancelled,
+        allDelayed,
+        allInactive,
         contactsThisMonth,
       ] = await Promise.all([
         getAllActiveSubscriptions(),
-        getSubscriptions("ACTIVE", monthStart.getTime(), monthEnd.getTime()),
-        getSubscriptions("CANCELLED", monthStart.getTime(), monthEnd.getTime()),
-        getSubscriptions("OVERDUE", monthStart.getTime(), monthEnd.getTime()),
-        getSubscriptions("INACTIVE", monthStart.getTime(), monthEnd.getTime()),
-        getSubscriptions("ACTIVE", prevMonthStart.getTime(), prevMonthEnd.getTime()),
-        getSubscriptions("CANCELLED", prevMonthStart.getTime(), prevMonthEnd.getTime()),
-        getSubscriptions("OVERDUE", prevMonthStart.getTime(), prevMonthEnd.getTime()),
-        getSubscriptions("INACTIVE", prevMonthStart.getTime(), prevMonthEnd.getTime()),
+        getSubscriptions("ACTIVE", startTs, endTs),
+        getSubscriptions("ACTIVE", prevStartTs, prevEndTs),
+        getAllSubscriptionsByStatus("CANCELLED"),
+        getAllSubscriptionsByStatus("DELAYED"),
+        getAllSubscriptionsByStatus("INACTIVE"),
         getContacts(monthStart.toISOString(), monthEnd.toISOString()),
       ]);
 
       const mrr = activeNow.reduce((sum, s) => sum + (s.price?.value ?? 0), 0);
       const mrrPrev = activePrev.reduce((sum, s) => sum + (s.price?.value ?? 0), 0);
 
-      const cancellationsThisMonth = cancelledThisMonth.length + overdueThisMonth.length + inactiveThisMonth.length;
-      const cancellationsPrev = cancelledPrev.length + overduePrev.length + inactivePrev.length;
+      function countInRange(arr: typeof allCancelled, start: number, end: number): number {
+        return arr.filter(s => {
+          const ts = s.cancellation_date ?? s.accession_date;
+          return ts && ts >= start && ts <= end;
+        }).length;
+      }
+
+      const cancellationsThisMonth =
+        countInRange(allCancelled, startTs, endTs) +
+        countInRange(allDelayed, startTs, endTs) +
+        countInRange(allInactive, startTs, endTs);
+
+      const cancellationsPrev =
+        countInRange(allCancelled, prevStartTs, prevEndTs) +
+        countInRange(allDelayed, prevStartTs, prevEndTs) +
+        countInRange(allInactive, prevStartTs, prevEndTs);
+
       const churnBase = activeNow.length + cancellationsThisMonth;
       const churnRate = churnBase > 0 ? (cancellationsThisMonth / churnBase) * 100 : 0;
 

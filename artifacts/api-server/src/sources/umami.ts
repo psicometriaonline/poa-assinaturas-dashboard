@@ -9,7 +9,8 @@ function getConfig() {
 
 async function umamiFetch(path: string, params: Record<string, string> = {}): Promise<unknown> {
   const { baseUrl, token } = getConfig();
-  const url = new URL(`${baseUrl}/v1${path}`);
+  const apiBase = baseUrl.endsWith("/api") ? baseUrl : `${baseUrl}/v1`;
+  const url = new URL(`${apiBase}${path}`);
   Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
 
   const response = await fetch(url.toString(), {
@@ -20,7 +21,9 @@ async function umamiFetch(path: string, params: Record<string, string> = {}): Pr
   });
 
   if (!response.ok) {
-    throw new Error(`Umami API error ${response.status}: ${await response.text()}`);
+    const body = await response.text();
+    logger.error({ url: url.toString(), status: response.status, body }, "Umami API error");
+    throw new Error(`Umami API error ${response.status}: ${body}`);
   }
 
   return response.json();
