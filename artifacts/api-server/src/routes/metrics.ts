@@ -278,9 +278,10 @@ router.get("/leads", async (req: Request, res: Response) => {
 
     const cacheKey = `leads:${startParam}:${endParam}`;
     const data = await withCache(cacheKey, () => getLeadsMetrics(startDate, endDate));
-    res.json({ data });
+    res.json({ error: false, data });
   } catch (err) {
-    res.status(500).json({ error: String(err), message: "Erro ao carregar métricas de leads" });
+    req.log.error({ err }, "Error fetching leads");
+    res.status(500).json(errorResponse(err instanceof Error ? err.message : "Erro ao carregar métricas de leads"));
   }
 });
 

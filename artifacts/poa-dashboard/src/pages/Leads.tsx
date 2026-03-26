@@ -11,6 +11,7 @@ import {
   ResponsiveContainer,
   ComposedChart,
   Line,
+  LabelList,
 } from "recharts";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { fetchLeads, formatNumber, formatPct } from "@/lib/api";
@@ -266,8 +267,12 @@ export default function Leads() {
                   }
                 />
                 <Legend wrapperStyle={{ color: "#94a3b8", fontSize: 12 }} />
-                <Bar yAxisId="count" dataKey="Leads" fill={COLOR_LEADS} radius={[4, 4, 0, 0]} />
-                <Bar yAxisId="count" dataKey="Conversões" fill={COLOR_CONV} radius={[4, 4, 0, 0]} />
+                <Bar yAxisId="count" dataKey="Leads" fill={COLOR_LEADS} radius={[4, 4, 0, 0]}>
+                  <LabelList dataKey="Leads" position="top" style={{ fill: "#94a3b8", fontSize: 10 }} />
+                </Bar>
+                <Bar yAxisId="count" dataKey="Conversões" fill={COLOR_CONV} radius={[4, 4, 0, 0]}>
+                  <LabelList dataKey="Conversões" position="top" style={{ fill: "#94a3b8", fontSize: 10 }} />
+                </Bar>
                 <Line yAxisId="pct" type="monotone" dataKey="Taxa %" stroke="#f59e0b" strokeWidth={2} dot={false} />
               </ComposedChart>
             </ResponsiveContainer>
