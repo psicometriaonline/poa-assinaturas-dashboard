@@ -21,8 +21,11 @@ function requireAdminToken(req: Request, res: Response, next: () => void) {
   next();
 }
 
-function detectInterval(planName: string): "ANNUAL" | "MONTHLY" {
-  return /anual|annual/i.test(planName ?? "") ? "ANNUAL" : "MONTHLY";
+function detectInterval(planName: string): "ANNUAL" | "MONTHLY" | "SEMIANNUAL" {
+  const name = planName ?? "";
+  if (/mensal|monthly|pro mensal/i.test(name) || /^REC_/i.test(name)) return "MONTHLY";
+  if (/semestral/i.test(name)) return "SEMIANNUAL";
+  return "ANNUAL";
 }
 
 function parseExcelDate(raw: unknown): number | null {
@@ -99,7 +102,9 @@ router.post(
         const cancellationDate = parseExcelDate(row[iCancel]);
         const planInterval    = detectInterval(planName);
         const mrrContribution = priceValue != null
-          ? planInterval === "ANNUAL" ? Math.round((priceValue / 12) * 100) / 100 : priceValue
+          ? planInterval === "ANNUAL" ? Math.round((priceValue / 12) * 100) / 100
+          : planInterval === "SEMIANNUAL" ? Math.round((priceValue / 6) * 100) / 100
+          : priceValue
           : null;
 
         if (!subscriberCode) { skipped++; continue; }

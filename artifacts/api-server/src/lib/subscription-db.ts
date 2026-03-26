@@ -33,6 +33,13 @@ export interface SubscriptionSummary {
   mrr: number;
 }
 
+export function detectPlanInterval(planName: string): "ANNUAL" | "MONTHLY" | "SEMIANNUAL" {
+  const name = planName ?? "";
+  if (/mensal|monthly|pro mensal/i.test(name) || /^REC_/i.test(name)) return "MONTHLY";
+  if (/semestral/i.test(name)) return "SEMIANNUAL";
+  return "ANNUAL";
+}
+
 export async function upsertSubscriptionFromWebhook(
   payload: HotmartWebhookPayload,
   event: string
@@ -65,11 +72,11 @@ export async function upsertSubscriptionFromWebhook(
       ? payload.creation_date
       : null;
 
-  const isAnnualPlan = planName
-    ? /anual|annual/i.test(planName)
-    : false;
+  const planInterval = detectPlanInterval(planName ?? "");
   const mrrContribution = priceValue != null
-    ? (isAnnualPlan ? Math.round((priceValue / 12) * 100) / 100 : priceValue)
+    ? planInterval === "ANNUAL" ? Math.round((priceValue / 12) * 100) / 100
+    : planInterval === "SEMIANNUAL" ? Math.round((priceValue / 6) * 100) / 100
+    : priceValue
     : null;
 
   await query(
@@ -109,7 +116,7 @@ export async function upsertSubscriptionFromWebhook(
       cancellationDate,
       priceValue,
       priceCurrency,
-      isAnnualPlan ? "ANNUAL" : "MONTHLY",
+      planInterval,
       mrrContribution,
       event,
     ]
