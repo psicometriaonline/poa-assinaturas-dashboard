@@ -100,8 +100,11 @@ async function paginateAll<T>(
     const p = pageToken ? { ...params, page_token: pageToken } : params;
     const data = (await hotmartFetch(path, p)) as {
       items?: T[];
-      page_info?: { next_page_token?: string };
+      page_info?: { next_page_token?: string; total_results?: number; results_per_page?: number };
+      [key: string]: unknown;
     };
+
+    logger.info({ path, page_info: data.page_info, keys: Object.keys(data), items_count: data.items?.length }, "Hotmart paginate page");
 
     const items = data.items ?? (data as Record<string, T[]>)[dataKey] ?? [];
     results.push(...items);
