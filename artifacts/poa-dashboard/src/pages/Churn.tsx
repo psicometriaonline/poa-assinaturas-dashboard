@@ -1,8 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { fetchChurn, formatNumber, formatPct, type PeriodKey } from "@/lib/api";
+import { fetchChurn, formatNumber, formatPct } from "@/lib/api";
 import { KPICard } from "@/components/KPICard";
-import { PeriodSelector } from "@/components/PeriodSelector";
-import { useState } from "react";
+import { usePeriod } from "@/context/PeriodContext";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, PieChart, Pie, Cell,
@@ -12,10 +11,12 @@ const COLORS = { voluntary: "#ef4444", involuntary: "#eab308" };
 const DONUT_COLORS = ["#ef4444", "#eab308"];
 
 export default function Churn() {
-  const [period, setPeriod] = useState<PeriodKey>("12months");
+  const { dateRange } = usePeriod();
+  const { start, end } = dateRange;
+
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ["churn", period],
-    queryFn: () => fetchChurn(period),
+    queryKey: ["churn", start, end],
+    queryFn: () => fetchChurn(start, end),
   });
 
   const d = data?.data;
@@ -29,12 +30,9 @@ export default function Churn() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-foreground">Churn</h1>
-          <p className="text-sm text-muted-foreground">Cancelamentos e motivos</p>
-        </div>
-        <PeriodSelector value={period} onChange={setPeriod} />
+      <div>
+        <h1 className="text-xl font-bold text-foreground">Churn</h1>
+        <p className="text-sm text-muted-foreground">Cancelamentos e motivos</p>
       </div>
 
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">

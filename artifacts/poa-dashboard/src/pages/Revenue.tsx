@@ -1,8 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { fetchRevenue, formatBRL, formatPct, formatNumber, type PeriodKey } from "@/lib/api";
+import { fetchRevenue, formatBRL, formatPct, formatNumber } from "@/lib/api";
 import { KPICard } from "@/components/KPICard";
-import { PeriodSelector } from "@/components/PeriodSelector";
-import { useState } from "react";
+import { usePeriod } from "@/context/PeriodContext";
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend,
@@ -11,10 +10,12 @@ import {
 const COLORS = ["#3b82f6", "#22c55e", "#eab308", "#ef4444", "#a855f7", "#06b6d4"];
 
 export default function Revenue() {
-  const [period, setPeriod] = useState<PeriodKey>("12months");
+  const { dateRange } = usePeriod();
+  const { start, end } = dateRange;
+
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ["revenue", period],
-    queryFn: () => fetchRevenue(period),
+    queryKey: ["revenue", start, end],
+    queryFn: () => fetchRevenue(start, end),
   });
 
   const d = data?.data;
@@ -32,12 +33,9 @@ export default function Revenue() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-foreground">Receita</h1>
-          <p className="text-sm text-muted-foreground">MRR, ARR e breakdown por plano</p>
-        </div>
-        <PeriodSelector value={period} onChange={setPeriod} />
+      <div>
+        <h1 className="text-xl font-bold text-foreground">Receita</h1>
+        <p className="text-sm text-muted-foreground">MRR, ARR e breakdown por plano</p>
       </div>
 
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">

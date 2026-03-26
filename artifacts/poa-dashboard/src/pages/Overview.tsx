@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { fetchOverview, formatBRL, formatPct, formatNumber } from "@/lib/api";
+import { fetchOverview, fetchRevenue, formatBRL, formatPct, formatNumber } from "@/lib/api";
 import { KPICard } from "@/components/KPICard";
+import { usePeriod } from "@/context/PeriodContext";
 import {
   LineChart,
   Line,
@@ -10,15 +11,16 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { useQuery as useRevenueQuery } from "@tanstack/react-query";
-import { fetchRevenue } from "@/lib/api";
 
 const CHART_COLOR = "#3b82f6";
 
 function MrrChart() {
-  const { data, isLoading } = useRevenueQuery({
-    queryKey: ["revenue", "12months"],
-    queryFn: () => fetchRevenue("12months"),
+  const { dateRange } = usePeriod();
+  const { start, end } = dateRange;
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["revenue", start, end],
+    queryFn: () => fetchRevenue(start, end),
   });
 
   if (isLoading) return <div className="h-56 bg-muted rounded animate-pulse" />;
@@ -27,7 +29,7 @@ function MrrChart() {
 
   return (
     <div className="bg-card border border-card-border rounded-xl p-5">
-      <h2 className="text-sm font-semibold text-foreground mb-4">Evolução do MRR (12 meses)</h2>
+      <h2 className="text-sm font-semibold text-foreground mb-4">Evolução do MRR</h2>
       <ResponsiveContainer width="100%" height={200}>
         <LineChart data={chartData}>
           <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />

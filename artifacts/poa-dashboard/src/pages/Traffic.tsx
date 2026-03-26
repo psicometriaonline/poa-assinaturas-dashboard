@@ -13,9 +13,9 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { ComposableMap, Geographies, Geography } from "react-simple-maps";
-import { fetchTraffic, type PeriodKey, type UmamiMetric } from "@/lib/api";
+import { fetchTraffic, type UmamiMetric } from "@/lib/api";
 import { KPICard } from "@/components/KPICard";
-import { PeriodSelector } from "@/components/PeriodSelector";
+import { usePeriod } from "@/context/PeriodContext";
 
 const GEO_URL = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
 
@@ -74,12 +74,13 @@ const CHART_COLOR_1 = "#3b82f6";
 const CHART_COLOR_2 = "#60a5fa";
 
 export default function Traffic() {
-  const [period, setPeriod] = useState<PeriodKey>("month");
+  const { dateRange } = usePeriod();
+  const { start, end } = dateRange;
   const [utmTab, setUtmTab] = useState<"utmSource" | "utmMedium" | "utmCampaign">("utmSource");
 
   const { data: resp, isLoading, isError } = useQuery({
-    queryKey: ["traffic", period],
-    queryFn: () => fetchTraffic(period),
+    queryKey: ["traffic", start, end],
+    queryFn: () => fetchTraffic(start, end),
   });
 
   const d = resp?.data ?? null;
@@ -102,12 +103,9 @@ export default function Traffic() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-foreground">Análise de Tráfego</h2>
-          <p className="text-sm text-muted-foreground mt-1">Dados do Umami Analytics</p>
-        </div>
-        <PeriodSelector value={period} onChange={setPeriod} />
+      <div>
+        <h1 className="text-xl font-bold text-foreground">Análise de Tráfego</h1>
+        <p className="text-sm text-muted-foreground">Dados do Umami Analytics</p>
       </div>
 
       {isError && (

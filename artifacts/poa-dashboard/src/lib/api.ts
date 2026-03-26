@@ -1,34 +1,5 @@
 const BASE = "/api/metrics";
 
-export type PeriodKey = "month" | "3months" | "6months" | "12months";
-
-export function getDateRange(period: PeriodKey): { start: string; end: string } {
-  const now = new Date();
-  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  let start: Date;
-
-  switch (period) {
-    case "month":
-      start = new Date(now.getFullYear(), now.getMonth(), 1);
-      break;
-    case "3months":
-      start = new Date(now.getFullYear(), now.getMonth() - 2, 1);
-      break;
-    case "6months":
-      start = new Date(now.getFullYear(), now.getMonth() - 5, 1);
-      break;
-    case "12months":
-    default:
-      start = new Date(now.getFullYear(), now.getMonth() - 11, 1);
-      break;
-  }
-
-  return {
-    start: start.toISOString().split("T")[0],
-    end: end.toISOString().split("T")[0],
-  };
-}
-
 async function apiFetch<T>(url: string): Promise<{ error: boolean; message?: string; data: T | null }> {
   const res = await fetch(url);
   if (!res.ok) {
@@ -53,8 +24,7 @@ export async function fetchOverview() {
   }>(`${BASE}/overview`);
 }
 
-export async function fetchRevenue(period: PeriodKey) {
-  const { start, end } = getDateRange(period);
+export async function fetchRevenue(start: string, end: string) {
   return apiFetch<{
     mrr: number;
     arr: number;
@@ -65,8 +35,7 @@ export async function fetchRevenue(period: PeriodKey) {
   }>(`${BASE}/revenue?start=${start}&end=${end}`);
 }
 
-export async function fetchChurn(period: PeriodKey) {
-  const { start, end } = getDateRange(period);
+export async function fetchChurn(start: string, end: string) {
   return apiFetch<{
     totalCancellations: number;
     voluntaryChurn: number;
@@ -76,8 +45,7 @@ export async function fetchChurn(period: PeriodKey) {
   }>(`${BASE}/churn?start=${start}&end=${end}`);
 }
 
-export async function fetchFunnel(period: PeriodKey) {
-  const { start, end } = getDateRange(period);
+export async function fetchFunnel(start: string, end: string) {
   return apiFetch<{
     totalRegistrations: number;
     totalConversions: number;
@@ -89,8 +57,7 @@ export async function fetchFunnel(period: PeriodKey) {
   }>(`${BASE}/funnel?start=${start}&end=${end}`);
 }
 
-export async function fetchAcquisition(period: PeriodKey) {
-  const { start, end } = getDateRange(period);
+export async function fetchAcquisition(start: string, end: string) {
   return apiFetch<{
     byUtmSource: Array<{ source: string; registrations: number }>;
     byTrafficChannel: Array<{ channel: string; sessions: number }>;
@@ -121,8 +88,7 @@ export interface TrafficData {
   hourly: UmamiMetric[];
 }
 
-export async function fetchTraffic(period: PeriodKey) {
-  const { start, end } = getDateRange(period);
+export async function fetchTraffic(start: string, end: string) {
   return apiFetch<TrafficData>(`${BASE}/traffic?start=${start}&end=${end}`);
 }
 

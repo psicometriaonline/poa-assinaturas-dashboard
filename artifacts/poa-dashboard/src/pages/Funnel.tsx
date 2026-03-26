@@ -1,18 +1,19 @@
 import { useQuery } from "@tanstack/react-query";
-import { fetchFunnel, formatNumber, formatPct, type PeriodKey } from "@/lib/api";
+import { fetchFunnel, formatNumber, formatPct } from "@/lib/api";
 import { KPICard } from "@/components/KPICard";
-import { PeriodSelector } from "@/components/PeriodSelector";
-import { useState } from "react";
+import { usePeriod } from "@/context/PeriodContext";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, BarChart as HBarChart,
 } from "recharts";
 
 export default function Funnel() {
-  const [period, setPeriod] = useState<PeriodKey>("12months");
+  const { dateRange } = usePeriod();
+  const { start, end } = dateRange;
+
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ["funnel", period],
-    queryFn: () => fetchFunnel(period),
+    queryKey: ["funnel", start, end],
+    queryFn: () => fetchFunnel(start, end),
   });
 
   const d = data?.data;
@@ -28,12 +29,9 @@ export default function Funnel() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-foreground">Funil de Conversão</h1>
-          <p className="text-sm text-muted-foreground">Do cadastro gratuito até o pagamento</p>
-        </div>
-        <PeriodSelector value={period} onChange={setPeriod} />
+      <div>
+        <h1 className="text-xl font-bold text-foreground">Funil de Conversão</h1>
+        <p className="text-sm text-muted-foreground">Do cadastro gratuito até o pagamento</p>
       </div>
 
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
