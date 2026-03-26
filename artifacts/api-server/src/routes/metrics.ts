@@ -245,4 +245,22 @@ router.get("/traffic", async (req: Request, res: Response) => {
   }
 });
 
+router.get("/debug/subscriptions", async (_req: Request, res: Response) => {
+  try {
+    const subs = await getAllActiveSubscriptions();
+    const products: Record<string, { name: string; plans: Record<string, number>; count: number }> = {};
+    for (const s of subs) {
+      const pid = s.product?.id ?? "?";
+      const pname = s.product?.name ?? "?";
+      const plan = s.plan?.name ?? "sem plano";
+      if (!products[pid]) products[pid] = { name: pname, plans: {}, count: 0 };
+      products[pid].count++;
+      products[pid].plans[plan] = (products[pid].plans[plan] ?? 0) + 1;
+    }
+    res.json({ total: subs.length, products });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 export default router;
