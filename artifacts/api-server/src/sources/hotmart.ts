@@ -64,6 +64,7 @@ async function hotmartFetch(path: string, params: Record<string, string> = {}): 
 export type SubscriptionStatus = "ACTIVE" | "CANCELLED" | "INACTIVE" | "DELAYED" | "STARTED";
 
 export interface HotmartSubscription {
+  subscriber_code?: string;
   subscription_id: string;
   status: SubscriptionStatus;
   accession_date: number;
@@ -72,7 +73,8 @@ export interface HotmartSubscription {
   price: { value: number; currency_code: string };
   product: { id: string; name: string };
   buyer: { name: string; email: string };
-  plan?: { name: string };
+  subscriber?: { name: string; email: string };
+  plan?: { name: string; id?: string };
 }
 
 export interface HotmartTransaction {
@@ -140,7 +142,7 @@ export async function getAllActiveSubscriptions(): Promise<HotmartSubscription[]
   try {
     return await paginateAll<HotmartSubscription>(
       "/subscriptions",
-      { status: "ACTIVE", max_results: "500" },
+      { status: "ACTIVE", max_results: "50" },
       "items"
     );
   } catch (err) {
@@ -153,7 +155,7 @@ export async function getAllSubscriptionsByStatus(status: Exclude<SubscriptionSt
   try {
     return await paginateAll<HotmartSubscription>(
       "/subscriptions",
-      { status, max_results: "500" },
+      { status, max_results: "50" },
       "items"
     );
   } catch (err) {

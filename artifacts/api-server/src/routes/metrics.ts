@@ -6,6 +6,7 @@ import { getConversionMetrics } from "../metrics/conversion";
 import { getAcquisitionMetrics } from "../metrics/acquisition";
 import { getAllActiveSubscriptions, getAllSubscriptionsByStatus, getSubscriptions } from "../sources/hotmart";
 import { getContacts } from "../sources/activecampaign";
+import { getDbSubscriptionSummary } from "../lib/subscription-db";
 import {
   getWebsiteStats,
   getPageViews,
@@ -57,6 +58,8 @@ router.get("/overview", async (req: Request, res: Response) => {
         allDelayed,
         allInactive,
         contactsThisMonth,
+        dbSummary,
+        dbSummaryPrev,
       ] = await Promise.all([
         getAllActiveSubscriptions(),
         getSubscriptions("ACTIVE", startTs, endTs),
@@ -65,10 +68,20 @@ router.get("/overview", async (req: Request, res: Response) => {
         getAllSubscriptionsByStatus("DELAYED"),
         getAllSubscriptionsByStatus("INACTIVE"),
         getContacts(monthStart.toISOString(), monthEnd.toISOString()),
+        getDbSubscriptionSummary(startTs, endTs).catch(() => null),
+        getDbSubscriptionSummary(prevStartTs, prevEndTs).catch(() => null),
       ]);
 
-      const mrr = activeNow.reduce((sum, s) => sum + (s.price?.value ?? 0), 0);
-      const mrrPrev = activePrev.reduce((sum, s) => sum + (s.price?.value ?? 0), 0);
+      const apiMrr = activeNow.reduce((sum, s) => sum + (s.price?.value ?? 0), 0);
+      const apiMrrPrev = activePrev.reduce((sum, s) => sum + (s.price?.value ?? 0), 0);
+
+      const apiSubscriberCodes = new Set(activeNow.map(s => s.subscriber_code).filter(Boolean));
+      const dbExclusiveActive = dbSummary
+        ? Math.max(0, dbSummary.active - [...apiSubscriberCodes].length)
+        : 0;
+
+      const mrr = apiMrr + (dbSummary?.mrr ?? 0);
+      const mrrPrev = apiMrrPrev + (dbSummaryPrev?.mrr ?? 0);
 
       function countInRange(arr: typeof allCancelled, start: number, end: number): number {
         return arr.filter(s => {
@@ -77,17 +90,25 @@ router.get("/overview", async (req: Request, res: Response) => {
         }).length;
       }
 
-      const cancellationsThisMonth =
+      const apiCancellationsThisMonth =
         countInRange(allCancelled, startTs, endTs) +
         countInRange(allDelayed, startTs, endTs) +
         countInRange(allInactive, startTs, endTs);
 
-      const cancellationsPrev =
+      const cancellationsThisMonth = apiCancellationsThisMonth + (dbSummary?.cancelledThisMonth ?? 0);
+
+      const apiCancellationsPrev =
         countInRange(allCancelled, prevStartTs, prevEndTs) +
         countInRange(allDelayed, prevStartTs, prevEndTs) +
         countInRange(allInactive, prevStartTs, prevEndTs);
 
-      const churnBase = activeNow.length + cancellationsThisMonth;
+      const cancellationsPrev = apiCancellationsPrev + (dbSummaryPrev?.cancelledThisMonth ?? 0);
+
+      const totalActive = activeNow.length + dbExclusiveActive;
+      const newSubscribers = newThisMonth.length + (dbSummary?.newThisMonth ?? 0);
+      const newSubscribersPrev = activePrev.length + (dbSummaryPrev?.newThisMonth ?? 0);
+
+      const churnBase = totalActive + cancellationsThisMonth;
       const churnRate = churnBase > 0 ? (cancellationsThisMonth / churnBase) * 100 : 0;
 
       const totalRegistrations = contactsThisMonth.length;
@@ -96,14 +117,20 @@ router.get("/overview", async (req: Request, res: Response) => {
         mrr,
         mrrPrev,
         mrrChange: mrrPrev > 0 ? ((mrr - mrrPrev) / mrrPrev) * 100 : 0,
-        newSubscribers: newThisMonth.length,
-        newSubscribersPrev: activePrev.length,
+        activeSubscribers: totalActive,
+        newSubscribers,
+        newSubscribersPrev,
         cancellations: cancellationsThisMonth,
         cancellationsPrev,
         churnRate: parseFloat(churnRate.toFixed(2)),
         totalRegistrations,
-        conversionRate: totalRegistrations > 0 ? (newThisMonth.length / totalRegistrations) * 100 : 0,
+        conversionRate: totalRegistrations > 0 ? (newSubscribers / totalRegistrations) * 100 : 0,
         avgDaysToConversion: 0,
+        dataSource: {
+          apiActive: activeNow.length,
+          webhookActive: dbExclusiveActive,
+          webhookTotal: dbSummary?.total ?? 0,
+        },
       };
     });
     res.json({ error: false, data });

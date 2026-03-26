@@ -13,6 +13,7 @@ export async function fetchOverview() {
     mrr: number;
     mrrPrev: number;
     mrrChange: number;
+    activeSubscribers: number;
     newSubscribers: number;
     newSubscribersPrev: number;
     cancellations: number;
@@ -21,7 +22,15 @@ export async function fetchOverview() {
     totalRegistrations: number;
     conversionRate: number;
     avgDaysToConversion: number;
+    dataSource: { apiActive: number; webhookActive: number; webhookTotal: number };
   }>(`${BASE}/overview`);
+}
+
+export async function fetchWebhookStatus() {
+  return apiFetch<{
+    events: Array<{ event: string; count: string }>;
+    subscriptions: Array<{ status: string; count: string }>;
+  }>("/api/webhooks/hotmart/status");
 }
 
 export async function fetchRevenue(start: string, end: string) {
