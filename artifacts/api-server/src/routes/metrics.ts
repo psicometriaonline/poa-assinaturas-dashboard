@@ -4,7 +4,7 @@ import { getRevenueMetrics } from "../metrics/revenue";
 import { getChurnMetrics } from "../metrics/churn";
 import { getConversionMetrics } from "../metrics/conversion";
 import { getAcquisitionMetrics } from "../metrics/acquisition";
-import { getAllActiveSubscriptions } from "../sources/hotmart";
+import { getAllActiveSubscriptions, getAllSubscriptionsByStatus } from "../sources/hotmart";
 import { getDbSubscriptionSummary } from "../lib/subscription-db";
 import { query } from "../lib/db";
 import {

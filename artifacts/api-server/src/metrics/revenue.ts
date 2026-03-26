@@ -1,4 +1,4 @@
-import { getAllActiveSubscriptions, getAllSubscriptionsByStatus, getSubscriptions, type HotmartSubscription } from "../sources/hotmart";
+import { query } from "../lib/db";
 
 export interface RevenueMetrics {
   mrr: number;
@@ -20,102 +20,86 @@ export interface RevenueMetrics {
   }>;
 }
 
-function startOfMonth(date: Date): Date {
-  return new Date(date.getFullYear(), date.getMonth(), 1);
-}
-
-function endOfMonth(date: Date): Date {
-  return new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999);
-}
-
-function monthLabel(date: Date): string {
-  return date.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" });
-}
-
-function inRange(ts: number | undefined, start: number, end: number): boolean {
-  if (!ts) return false;
-  return ts >= start && ts <= end;
-}
-
-function planName(s: HotmartSubscription): string {
-  return s.plan?.name ?? s.product?.name ?? "Sem plano";
-}
-
-export async function getRevenueMetrics(startDate: Date, endDate: Date): Promise<RevenueMetrics> {
-  const [activeSubscriptions, allCancelled, allDelayed, allInactive] = await Promise.all([
-    getAllActiveSubscriptions(),
-    getAllSubscriptionsByStatus("CANCELLED"),
-    getAllSubscriptionsByStatus("DELAYED"),
-    getAllSubscriptionsByStatus("INACTIVE"),
+export async function getRevenueMetrics(_startDate: Date, _endDate: Date): Promise<RevenueMetrics> {
+  const [summaryRows, byPlanRows, historyRows] = await Promise.all([
+    query<{ mrr: string; count: string }>(
+      `SELECT
+         COALESCE(SUM(
+           CASE WHEN mrr_contribution IS NOT NULL THEN mrr_contribution
+                WHEN plan_interval = 'ANNUAL' THEN ROUND(price_value / 12, 2)
+                ELSE price_value END
+         ), 0) AS mrr,
+         COUNT(*) AS count
+       FROM hotmart_subscriptions
+       WHERE status = 'ACTIVE' AND price_value IS NOT NULL`
+    ),
+    query<{ plan_name: string; count: string; mrr: string }>(
+      `SELECT
+         COALESCE(plan_name, 'Sem plano') AS plan_name,
+         COUNT(*) AS count,
+         COALESCE(SUM(
+           CASE WHEN mrr_contribution IS NOT NULL THEN mrr_contribution
+                WHEN plan_interval = 'ANNUAL' THEN ROUND(price_value / 12, 2)
+                ELSE price_value END
+         ), 0) AS mrr
+       FROM hotmart_subscriptions
+       WHERE status = 'ACTIVE' AND price_value IS NOT NULL
+       GROUP BY plan_name
+       ORDER BY mrr DESC`
+    ),
+    query<{ month: string; new_subs: string; mrr_added: string }>(
+      `SELECT
+         TO_CHAR(TO_TIMESTAMP(accession_date / 1000), 'Mon/YY') AS month,
+         TO_TIMESTAMP(accession_date / 1000) AS month_ts,
+         COUNT(*) AS new_subs,
+         COALESCE(SUM(
+           CASE WHEN mrr_contribution IS NOT NULL THEN mrr_contribution
+                WHEN plan_interval = 'ANNUAL' THEN ROUND(price_value / 12, 2)
+                ELSE price_value END
+         ), 0) AS mrr_added
+       FROM hotmart_subscriptions
+       WHERE status = 'ACTIVE'
+         AND accession_date IS NOT NULL
+         AND price_value IS NOT NULL
+       GROUP BY month, month_ts
+       ORDER BY month_ts ASC`
+    ),
   ]);
 
-  const allNonActive = [...allCancelled, ...allDelayed, ...allInactive];
+  const mrr = parseFloat(summaryRows[0]?.mrr ?? "0");
+  const totalSubscribers = parseInt(summaryRows[0]?.count ?? "0", 10);
+  const arr = Math.round(mrr * 12 * 100) / 100;
+  const arpu = totalSubscribers > 0 ? Math.round((mrr / totalSubscribers) * 100) / 100 : 0;
 
-  const totalSubscribers = activeSubscriptions.length;
-  const mrr = activeSubscriptions.reduce((sum, s) => sum + (s.price?.value ?? 0), 0);
-  const arr = mrr * 12;
-  const arpu = totalSubscribers > 0 ? mrr / totalSubscribers : 0;
+  const byPlan = byPlanRows.map((r) => {
+    const rev = parseFloat(r.mrr);
+    return {
+      plan: r.plan_name,
+      subscribers: parseInt(r.count, 10),
+      revenue: rev,
+      percentage: mrr > 0 ? Math.round((rev / mrr) * 1000) / 10 : 0,
+    };
+  });
 
-  const byPlanMap: Record<string, { subscribers: number; revenue: number }> = {};
-  for (const sub of activeSubscriptions) {
-    const plan = planName(sub);
-    if (!byPlanMap[plan]) byPlanMap[plan] = { subscribers: 0, revenue: 0 };
-    byPlanMap[plan].subscribers += 1;
-    byPlanMap[plan].revenue += sub.price?.value ?? 0;
-  }
-
-  const byPlan = Object.entries(byPlanMap).map(([plan, data]) => ({
-    plan,
-    subscribers: data.subscribers,
-    revenue: data.revenue,
-    percentage: mrr > 0 ? (data.revenue / mrr) * 100 : 0,
-  }));
-
-  const history: RevenueMetrics["history"] = [];
-  let runningTotal = 0;
-  const current = new Date(startDate);
-
-  while (current <= endDate) {
-    const monthStart = startOfMonth(current);
-    const monthEnd = endOfMonth(current);
-    const startTs = monthStart.getTime();
-    const endTs = monthEnd.getTime();
-
-    const activeSubs = await getSubscriptions("ACTIVE", startTs, endTs);
-
-    const churnedThisMonth = allNonActive.filter(s => {
-      const ts = s.cancellation_date ?? s.accession_date;
-      return inRange(ts, startTs, endTs);
-    });
-
-    const newSubs = activeSubs.length;
-    const churnedSubs = churnedThisMonth.length;
-    runningTotal = Math.max(0, runningTotal + newSubs - churnedSubs);
-
-    const monthMrr = activeSubs.reduce((sum, s) => sum + (s.price?.value ?? 0), 0);
-    const churnBase = runningTotal + churnedSubs;
-    const churnRate = churnBase > 0 ? (churnedSubs / churnBase) * 100 : 0;
-
-    const monthByPlan: Record<string, number> = {};
-    for (const sub of activeSubs) {
-      const plan = planName(sub);
-      monthByPlan[plan] = (monthByPlan[plan] ?? 0) + (sub.price?.value ?? 0);
-    }
-
-    history.push({
-      month: monthLabel(current),
-      mrr: monthMrr,
-      arr: monthMrr * 12,
-      arpu: newSubs > 0 ? monthMrr / newSubs : 0,
+  let cumulativeSubs = 0;
+  let cumulativeMrr = 0;
+  const history = historyRows.map((r) => {
+    const newSubs = parseInt(r.new_subs, 10);
+    const mrrAdded = parseFloat(r.mrr_added);
+    cumulativeSubs += newSubs;
+    cumulativeMrr = Math.round((cumulativeMrr + mrrAdded) * 100) / 100;
+    return {
+      month: r.month,
+      mrr: cumulativeMrr,
+      arr: Math.round(cumulativeMrr * 12 * 100) / 100,
+      arpu: cumulativeSubs > 0 ? Math.round((cumulativeMrr / cumulativeSubs) * 100) / 100 : 0,
       newSubs,
-      churnedSubs,
-      totalSubs: runningTotal,
-      churnRate: parseFloat(churnRate.toFixed(2)),
-      byPlan: monthByPlan,
-    });
-
-    current.setMonth(current.getMonth() + 1);
-  }
+      churnedSubs: 0,
+      totalSubs: cumulativeSubs,
+      churnRate: 0,
+      byPlan: {},
+    };
+  });
 
   const totalRevenue = history.reduce((sum, h) => sum + h.mrr, 0);
 
