@@ -21,6 +21,11 @@ import {
 
 const router: IRouter = Router();
 
+router.use((_req: Request, res: Response, next: () => void) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
+
 function parseDateRange(req: Request): { startDate: Date; endDate: Date } {
   const now = new Date();
   const endDate = req.query.end
