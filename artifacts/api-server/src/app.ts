@@ -38,7 +38,7 @@ if (process.env.NODE_ENV === "production") {
   const __dirname = path.dirname(__filename);
   const dashboardDist = path.resolve(__dirname, "../../poa-dashboard/dist/public");
   app.use(express.static(dashboardDist));
-  app.get("*", (_req, res) => {
+  app.get("/{*path}", (_req, res) => {
     res.sendFile(path.join(dashboardDist, "index.html"));
   });
 }
