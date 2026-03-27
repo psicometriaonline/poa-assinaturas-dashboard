@@ -52,21 +52,36 @@ router.post(
       const rows = XLSX.utils.sheet_to_json(ws, { header: 1 }) as unknown[][];
 
       const headers = rows[0] as string[];
-      const idxOf = (name: string) =>
-        headers.findIndex((h) => String(h).toLowerCase().includes(name.toLowerCase()));
+
+      const normalize = (s: string) =>
+        String(s).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+
+      const idxOf = (...names: string[]) => {
+        for (const name of names) {
+          const n = normalize(name);
+          const idx = headers.findIndex((h) => normalize(h).includes(n));
+          if (idx !== -1) return idx;
+        }
+        return -1;
+      };
 
       const iStatus  = idxOf("Status");
-      const iName    = idxOf("Cliente");
-      const iCode    = idxOf("Código");
-      const iProduct = idxOf("Produto");
-      const iPlan    = idxOf("Plano");
-      const iValue   = idxOf("Valor");
-      const iAccess  = idxOf("Adesão");
-      const iCancel  = idxOf("Cancelamento");
-      const iEmail   = idxOf("Email");
+      const iName    = idxOf("Cliente", "Nome", "Name");
+      const iCode    = idxOf("Código", "Codigo", "Code", "Cód", "Cod", "Subscription");
+      const iProduct = idxOf("Produto", "Product");
+      const iPlan    = idxOf("Plano", "Plan");
+      const iValue   = idxOf("Valor", "Value", "Price");
+      const iAccess  = idxOf("Adesão", "Adesao", "Acesso", "Data de Início", "Inicio", "Start");
+      const iCancel  = idxOf("Cancelamento", "Cancel");
+      const iEmail   = idxOf("Email", "E-mail");
+
+      logger.info({ headers, iCode, iStatus, iName, iProduct, iPlan }, "Colunas detectadas no arquivo");
 
       if (iCode === -1) {
-        res.status(422).json({ error: true, message: "Coluna 'Código' não encontrada. Verifique o formato do arquivo." });
+        res.status(422).json({
+          error: true,
+          message: `Coluna 'Código' não encontrada. Colunas encontradas: ${headers.join(", ")}`,
+        });
         return;
       }
 
