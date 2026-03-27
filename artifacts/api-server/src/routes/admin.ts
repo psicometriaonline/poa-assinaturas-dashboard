@@ -3,6 +3,7 @@ import multer from "multer";
 import * as XLSX from "xlsx";
 import { query } from "../lib/db";
 import { logger } from "../lib/logger";
+import { clearCache } from "../cache";
 
 const router: IRouter = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -179,7 +180,8 @@ router.post(
       const mrr = parseFloat(mrrRows[0]?.sum ?? "0");
       const activeCount = parseInt(activeRows[0]?.count ?? "0", 10);
 
-      logger.info({ inserted, skipped, mrr, activeCount }, "Import de assinantes concluído");
+      clearCache();
+      logger.info({ inserted, skipped, mrr, activeCount }, "Import de assinantes concluído — cache limpo");
 
       res.json({
         error: false,
@@ -198,5 +200,11 @@ router.post(
     }
   }
 );
+
+router.post("/clear-cache", requireAdminToken, (_req: Request, res: Response) => {
+  clearCache();
+  logger.info("Cache limpo manualmente via admin");
+  res.json({ error: false, data: { message: "Cache limpo com sucesso." } });
+});
 
 export default router;
