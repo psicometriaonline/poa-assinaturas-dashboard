@@ -5,7 +5,7 @@ import { KPICard } from "@/components/KPICard";
 import { usePeriod } from "@/context/PeriodContext";
 import {
   AreaChart, Area, LineChart, Line, BarChart, Bar,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LabelList,
 } from "recharts";
 
 const PLAN_COLORS = ["#3b82f6", "#22c55e", "#eab308", "#ef4444", "#a855f7", "#06b6d4"];
@@ -45,6 +45,14 @@ export default function Revenue() {
 
   const lastMonth = d?.history[d.history.length - 1];
   const currentChurnRate = lastMonth?.churnRate ?? 0;
+
+  const newSubsChartData = (d?.history ?? [])
+    .filter((h) => h.monthKey >= "2026-03")
+    .map((h) => ({
+      month: h.month,
+      "Novas Assinaturas": h.newSubs,
+      "Cancelamentos": h.churnedSubs,
+    }));
 
   return (
     <div className="space-y-8">
@@ -274,40 +282,37 @@ export default function Revenue() {
         </div>
       )}
 
-      {/* ── Monthly churn table ───────────────────────────────────── */}
-      {d?.history && d.history.length > 0 && (
-        <div className="bg-card border border-card-border rounded-xl p-5">
-          <h2 className="text-sm font-semibold text-foreground mb-4">Evolução Mensal</h2>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-muted-foreground text-left border-b border-border">
-                  <th className="pb-2 font-medium">Mês</th>
-                  <th className="pb-2 font-medium text-right">MRR</th>
-                  <th className="pb-2 font-medium text-right">ARR</th>
-                  <th className="pb-2 font-medium text-right">Total Assinantes</th>
-                  <th className="pb-2 font-medium text-right">Novos</th>
-                  <th className="pb-2 font-medium text-right">Cancelamentos</th>
-                  <th className="pb-2 font-medium text-right">Churn Rate</th>
-                </tr>
-              </thead>
-              <tbody>
-                {d.history.map((h) => (
-                  <tr key={h.month} className="border-b border-border/50">
-                    <td className="py-2.5">{h.month}</td>
-                    <td className="py-2.5 text-right">{formatBRL(h.mrr)}</td>
-                    <td className="py-2.5 text-right">{formatBRL(h.arr)}</td>
-                    <td className="py-2.5 text-right">{formatNumber(h.totalSubs)}</td>
-                    <td className="py-2.5 text-right text-green-400">+{formatNumber(h.newSubs)}</td>
-                    <td className="py-2.5 text-right text-red-400">-{formatNumber(h.churnedSubs)}</td>
-                    <td className="py-2.5 text-right">{formatPct(h.churnRate)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+      {/* ── Evolução Mensal (Mar/2026 em diante) ─────────────────── */}
+      <div className="bg-card border border-card-border rounded-xl p-5">
+        <div className="mb-4">
+          <h2 className="text-sm font-semibold text-foreground">Evolução Mensal</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">Novas assinaturas e cancelamentos a partir de Mar/2026</p>
         </div>
-      )}
+        {newSubsChartData.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-6 text-center">Aguardando dados de Mar/2026...</p>
+        ) : (
+          <ResponsiveContainer width="100%" height={280}>
+            <BarChart data={newSubsChartData} margin={{ top: 20, right: 16, left: 0, bottom: 4 }} barGap={4}>
+              {grid}
+              <XAxis dataKey="month" tick={axTick} axisLine={false} tickLine={false} />
+              <YAxis tick={axTick} axisLine={false} tickLine={false} allowDecimals={false} />
+              <Tooltip
+                {...tooltip}
+                formatter={(value: number, name: string) => [value, name]}
+              />
+              <Legend
+                wrapperStyle={{ fontSize: 12, color: "#94a3b8", paddingTop: 12 }}
+              />
+              <Bar dataKey="Novas Assinaturas" fill="#22c55e" radius={[4, 4, 0, 0]} maxBarSize={48}>
+                <LabelList dataKey="Novas Assinaturas" position="top" style={{ fill: "#22c55e", fontSize: 11 }} formatter={(v: number) => v > 0 ? v : ""} />
+              </Bar>
+              <Bar dataKey="Cancelamentos" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={48}>
+                <LabelList dataKey="Cancelamentos" position="top" style={{ fill: "#ef4444", fontSize: 11 }} formatter={(v: number) => v > 0 ? v : ""} />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </div>
     </div>
   );
 }

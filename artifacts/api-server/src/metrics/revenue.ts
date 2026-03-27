@@ -9,6 +9,7 @@ export interface RevenueMetrics {
   byPlan: Array<{ plan: string; subscribers: number; revenue: number; percentage: number }>;
   history: Array<{
     month: string;
+    monthKey: string;
     mrr: number;
     arr: number;
     arpu: number;
@@ -21,7 +22,7 @@ export interface RevenueMetrics {
 }
 
 export async function getRevenueMetrics(_startDate: Date, _endDate: Date): Promise<RevenueMetrics> {
-  const [summaryRows, byPlanRows, historyRows] = await Promise.all([
+  const [summaryRows, byPlanRows, historyRows, cancellationRows] = await Promise.all([
     query<{ mrr: string; count: string }>(
       `SELECT
          COALESCE(SUM(
@@ -47,10 +48,10 @@ export async function getRevenueMetrics(_startDate: Date, _endDate: Date): Promi
        GROUP BY plan_name
        ORDER BY mrr DESC`
     ),
-    query<{ month: string; new_subs: string; mrr_added: string }>(
+    query<{ month: string; month_key: string; new_subs: string; mrr_added: string }>(
       `SELECT
-         TO_CHAR(TO_TIMESTAMP(accession_date / 1000), 'Mon/YY') AS month,
-         TO_TIMESTAMP(accession_date / 1000) AS month_ts,
+         TO_CHAR(DATE_TRUNC('month', TO_TIMESTAMP(accession_date / 1000)), 'Mon/YY') AS month,
+         TO_CHAR(DATE_TRUNC('month', TO_TIMESTAMP(accession_date / 1000)), 'YYYY-MM') AS month_key,
          COUNT(*) AS new_subs,
          COALESCE(SUM(
            CASE WHEN mrr_contribution IS NOT NULL THEN mrr_contribution
@@ -61,8 +62,17 @@ export async function getRevenueMetrics(_startDate: Date, _endDate: Date): Promi
        WHERE status = 'ACTIVE'
          AND accession_date IS NOT NULL
          AND price_value IS NOT NULL
-       GROUP BY month, month_ts
-       ORDER BY month_ts ASC`
+       GROUP BY 1, 2
+       ORDER BY 2 ASC`
+    ),
+    query<{ month_key: string; cancelled: string }>(
+      `SELECT
+         TO_CHAR(DATE_TRUNC('month', received_at), 'YYYY-MM') AS month_key,
+         COUNT(*) AS cancelled
+       FROM hotmart_webhook_events
+       WHERE event = 'SUBSCRIPTION_CANCELLATION'
+       GROUP BY 1
+       ORDER BY 1 ASC`
     ),
   ]);
 
@@ -81,22 +91,30 @@ export async function getRevenueMetrics(_startDate: Date, _endDate: Date): Promi
     };
   });
 
+  const cancellationByMonth = new Map<string, number>(
+    cancellationRows.map((r) => [r.month_key, parseInt(r.cancelled, 10)])
+  );
+
   let cumulativeSubs = 0;
   let cumulativeMrr = 0;
   const history = historyRows.map((r) => {
     const newSubs = parseInt(r.new_subs, 10);
     const mrrAdded = parseFloat(r.mrr_added);
-    cumulativeSubs += newSubs;
+    const monthKey = r.month_key;
+    const churnedSubs = cancellationByMonth.get(monthKey) ?? 0;
+    cumulativeSubs += newSubs - churnedSubs;
     cumulativeMrr = Math.round((cumulativeMrr + mrrAdded) * 100) / 100;
+    const churnRate = cumulativeSubs > 0 ? Math.round((churnedSubs / cumulativeSubs) * 10000) / 100 : 0;
     return {
       month: r.month,
+      monthKey,
       mrr: cumulativeMrr,
       arr: Math.round(cumulativeMrr * 12 * 100) / 100,
       arpu: cumulativeSubs > 0 ? Math.round((cumulativeMrr / cumulativeSubs) * 100) / 100 : 0,
       newSubs,
-      churnedSubs: 0,
+      churnedSubs,
       totalSubs: cumulativeSubs,
-      churnRate: 0,
+      churnRate,
       byPlan: {},
     };
   });
