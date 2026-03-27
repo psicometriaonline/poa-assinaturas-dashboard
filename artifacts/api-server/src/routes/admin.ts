@@ -133,8 +133,8 @@ router.post(
               accession_date, cancellation_date,
               price_value, price_currency,
               plan_interval, mrr_contribution,
-              last_event, last_event_at, updated_at
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'BRL',$10,$11,'IMPORT_CSV',NOW(),NOW())
+              last_event, original_event, last_event_at, updated_at
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'BRL',$10,$11,'IMPORT_CSV','IMPORT_CSV',NOW(),NOW())
             ON CONFLICT (subscriber_code) DO UPDATE SET
               status = EXCLUDED.status,
               product_name = COALESCE(EXCLUDED.product_name, hotmart_subscriptions.product_name),

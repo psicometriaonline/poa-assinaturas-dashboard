@@ -59,9 +59,9 @@ export async function getRevenueMetrics(_startDate: Date, _endDate: Date): Promi
                 ELSE price_value END
          ), 0) AS mrr_added
        FROM hotmart_subscriptions
-       WHERE status = 'ACTIVE'
-         AND accession_date IS NOT NULL
+       WHERE accession_date IS NOT NULL
          AND price_value IS NOT NULL
+         AND original_event IN ('IMPORT_CSV', 'PURCHASE_APPROVED', 'REACTIVATED_PURCHASE')
        GROUP BY 1, 2
        ORDER BY 2 ASC`
     ),
