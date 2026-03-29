@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { logger } from "../lib/logger";
 import { query } from "../lib/db";
 import { upsertSubscriptionFromWebhook } from "../lib/subscription-db";
+import { clearCache } from "../cache";
 import type { HotmartWebhookPayload } from "../lib/hotmart-webhook-types";
 
 const router = Router();
@@ -46,6 +47,8 @@ router.post("/hotmart", async (req: Request, res: Response) => {
 
     if (subscriptionEvents.includes(event)) {
       await upsertSubscriptionFromWebhook(payload, event);
+      clearCache();
+      logger.info({ event, subscriberCode }, "Cache limpo após evento de assinatura");
     }
 
     res.status(200).json({ received: true, event });
