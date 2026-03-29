@@ -157,6 +157,8 @@ export default function Funnel() {
 
   const isLoading = funnelLoading;
 
+  const [leadsGranularity, setLeadsGranularity] = useState<"dia" | "mes" | "ano">("dia");
+
   const distributionData = f ? [
     { name: "0–7 dias", value: f.distributionByRange["0-7"] },
     { name: "8–14 dias", value: f.distributionByRange["8-14"] },
@@ -164,10 +166,42 @@ export default function Funnel() {
     { name: "+30 dias", value: f.distributionByRange["+30"] },
   ] : [];
 
-  const dailyChartData = (l?.daily ?? []).map((item) => {
-    const [, m, day] = item.date.split("-");
-    return { name: `${day}/${m}`, Leads: item.leads };
-  });
+  const rawDaily = l?.daily ?? [];
+  const uniqueMonths = Array.from(new Set(rawDaily.map((d) => d.date.slice(0, 7))));
+  const uniqueYears  = Array.from(new Set(rawDaily.map((d) => d.date.slice(0, 4))));
+  const hasManyMonths = uniqueMonths.length > 1;
+  const hasManyYears  = uniqueYears.length > 1;
+
+  const leadsChartData = (() => {
+    if (leadsGranularity === "mes") {
+      const agg: Record<string, number> = {};
+      for (const d of rawDaily) {
+        const mk = d.date.slice(0, 7);
+        agg[mk] = (agg[mk] ?? 0) + d.leads;
+      }
+      return Object.entries(agg).sort(([a], [b]) => a.localeCompare(b)).map(([mk, leads]) => {
+        const [y, m] = mk.split("-");
+        const label = new Date(parseInt(y), parseInt(m) - 1, 1)
+          .toLocaleDateString("pt-BR", { month: "short", year: "2-digit" });
+        return { name: label, Leads: leads };
+      });
+    }
+    if (leadsGranularity === "ano") {
+      const agg: Record<string, number> = {};
+      for (const d of rawDaily) {
+        const yr = d.date.slice(0, 4);
+        agg[yr] = (agg[yr] ?? 0) + d.leads;
+      }
+      return Object.entries(agg).sort(([a], [b]) => a.localeCompare(b)).map(([yr, leads]) => ({
+        name: yr, Leads: leads,
+      }));
+    }
+    // dia (default)
+    return rawDaily.map((item) => {
+      const [, m, day] = item.date.split("-");
+      return { name: `${day}/${m}`, Leads: item.leads };
+    });
+  })();
 
   return (
     <div className="space-y-6">
@@ -233,25 +267,49 @@ export default function Funnel() {
       {/* Novos Leads por Dia + Tempo até Conversão */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <div className="bg-card border border-card-border rounded-xl p-5">
-          <h2 className="text-sm font-semibold text-foreground mb-4">Novos Leads por Dia</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-semibold text-foreground">Novos Leads</h2>
+            <div className="flex gap-1">
+              {(["dia", "mes", "ano"] as const).map((g) => {
+                const disabled = (g === "mes" && !hasManyMonths) || (g === "ano" && !hasManyYears);
+                const label = g === "dia" ? "Dia" : g === "mes" ? "Mês" : "Ano";
+                return (
+                  <button
+                    key={g}
+                    disabled={disabled}
+                    onClick={() => !disabled && setLeadsGranularity(g)}
+                    className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+                      leadsGranularity === g
+                        ? "bg-primary text-primary-foreground"
+                        : disabled
+                        ? "text-muted-foreground/30 cursor-not-allowed"
+                        : "text-muted-foreground hover:text-foreground hover:bg-sidebar-accent"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           {leadsLoading ? (
             <div className="h-52 bg-muted rounded animate-pulse" />
-          ) : dailyChartData.length === 0 ? (
+          ) : leadsChartData.length === 0 ? (
             <div className="h-52 flex items-center justify-center text-muted-foreground text-sm">
               Sem dados para o período
             </div>
           ) : (
             <ResponsiveContainer width="100%" height={210}>
-              <BarChart data={dailyChartData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+              <BarChart data={leadsChartData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                 <XAxis
                   dataKey="name"
                   tick={{ fill: "#94a3b8", fontSize: 10 }}
-                  interval={Math.max(0, Math.floor(dailyChartData.length / 8) - 1)}
+                  interval={leadsGranularity === "dia" ? Math.max(0, Math.floor(leadsChartData.length / 8) - 1) : 0}
                 />
                 <YAxis tick={{ fill: "#94a3b8", fontSize: 11 }} allowDecimals={false} />
                 <Tooltip contentStyle={TOOLTIP_STYLE} />
-                <Bar dataKey="Leads" fill={COLOR_LEADS} radius={[3, 3, 0, 0]} />
+                <Bar dataKey="Leads" fill={COLOR_LEADS} radius={[3, 3, 0, 0]} maxBarSize={leadsGranularity === "dia" ? 24 : 48} />
               </BarChart>
             </ResponsiveContainer>
           )}
