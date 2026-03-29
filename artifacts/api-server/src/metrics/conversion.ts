@@ -51,7 +51,8 @@ export async function getConversionMetrics(
       `SELECT subscriber_email, accession_date
        FROM hotmart_subscriptions
        WHERE subscriber_email IS NOT NULL
-         AND accession_date IS NOT NULL`
+         AND accession_date IS NOT NULL
+         AND original_event != 'IMPORT_CSV'`
     ),
   ]);
 
