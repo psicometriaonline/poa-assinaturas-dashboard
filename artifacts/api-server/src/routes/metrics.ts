@@ -8,6 +8,7 @@ import { getLeadsMetrics, takeLeadsSnapshot, getLeadsSnapshots } from "../metric
 import { getAllActiveSubscriptions, getAllSubscriptionsByStatus } from "../sources/hotmart";
 import { getDbSubscriptionSummary } from "../lib/subscription-db";
 import { query } from "../lib/db";
+import { CHURN_EVENTS } from "../lib/churn-events";
 import {
   getWebsiteStats,
   getPageViews,
@@ -48,14 +49,7 @@ router.get("/overview", async (req: Request, res: Response) => {
       const now = new Date();
       const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-      // --- Dados reais: apenas DB (planilha importada + webhooks) ---
-      const CANCELLATION_EVENTS = [
-        "SUBSCRIPTION_CANCELLATION",
-        "PURCHASE_CANCELED",
-        "PURCHASE_REFUNDED",
-        "PURCHASE_CHARGEBACK",
-        "PURCHASE_EXPIRED",
-      ];
+      const NEW_SUB_EVENTS = ["PURCHASE_APPROVED", "REACTIVATED_PURCHASE"];
 
       const [activeRow, mrrRow, newRow, cancelRow] = await Promise.all([
         query<{ count: string }>(
@@ -72,16 +66,16 @@ router.get("/overview", async (req: Request, res: Response) => {
         query<{ count: string }>(
           `SELECT COUNT(DISTINCT subscriber_code) as count
            FROM hotmart_webhook_events
-           WHERE event = 'PURCHASE_APPROVED'
-             AND received_at >= $1`,
-          [monthStart]
+           WHERE event = ANY($1::text[])
+             AND received_at >= $2`,
+          [NEW_SUB_EVENTS, monthStart]
         ),
         query<{ count: string }>(
           `SELECT COUNT(DISTINCT subscriber_code) as count
            FROM hotmart_webhook_events
            WHERE event = ANY($1::text[])
              AND received_at >= $2`,
-          [CANCELLATION_EVENTS, monthStart]
+          [[...CHURN_EVENTS], monthStart]
         ),
       ]);
 

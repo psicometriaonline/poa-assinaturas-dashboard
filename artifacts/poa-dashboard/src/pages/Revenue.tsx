@@ -39,8 +39,6 @@ export default function Revenue() {
 
   const stackedData = d?.history.map((h) => ({ month: h.month, ...h.byPlan })) ?? [];
 
-  const totalChurnRate =
-    d?.history.reduce((sum, h) => sum + h.churnedSubs, 0) ?? 0;
   const totalCancellations = d?.history.reduce((sum, h) => sum + h.churnedSubs, 0) ?? 0;
 
   const lastMonth = d?.history[d.history.length - 1];
@@ -74,11 +72,11 @@ export default function Revenue() {
             <div className="h-8 w-40 bg-muted rounded animate-pulse" />
           ) : (
             <>
-              <p className="text-xs font-semibold text-muted-foreground tracking-widest uppercase">Receita Total</p>
+              <p className="text-xs font-semibold text-muted-foreground tracking-widest uppercase">MRR Total Adquirido</p>
               <p className="text-3xl font-bold text-foreground tabular-nums">
                 {d ? formatBRL(d.totalRevenue) : "—"}
               </p>
-              <p className="text-xs text-muted-foreground">no período selecionado</p>
+              <p className="text-xs text-muted-foreground">soma do MRR de todas as aquisições</p>
             </>
           )}
         </div>

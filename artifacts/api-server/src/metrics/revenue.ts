@@ -1,4 +1,5 @@
 import { query } from "../lib/db";
+import { CHURN_EVENTS } from "../lib/churn-events";
 
 export interface RevenueMetrics {
   mrr: number;
@@ -15,6 +16,7 @@ export interface RevenueMetrics {
     arpu: number;
     newSubs: number;
     churnedSubs: number;
+    mrrLost: number;
     totalSubs: number;
     churnRate: number;
     byPlan: Record<string, number>;
@@ -65,14 +67,36 @@ export async function getRevenueMetrics(_startDate: Date, _endDate: Date): Promi
        GROUP BY 1, 2
        ORDER BY 2 ASC`
     ),
-    query<{ month_key: string; cancelled: string }>(
-      `SELECT
-         TO_CHAR(DATE_TRUNC('month', received_at), 'YYYY-MM') AS month_key,
-         COUNT(*) AS cancelled
-       FROM hotmart_webhook_events
-       WHERE event = 'SUBSCRIPTION_CANCELLATION'
-       GROUP BY 1
-       ORDER BY 1 ASC`
+    query<{ month_key: string; cancelled: string; mrr_lost: string }>(
+      `WITH monthly_cancels AS (
+         SELECT DISTINCT ON (
+           TO_CHAR(DATE_TRUNC('month', received_at), 'YYYY-MM'),
+           subscriber_code
+         )
+           TO_CHAR(DATE_TRUNC('month', received_at), 'YYYY-MM') AS month_key,
+           subscriber_code
+         FROM hotmart_webhook_events
+         WHERE event = ANY($1::text[])
+         ORDER BY
+           TO_CHAR(DATE_TRUNC('month', received_at), 'YYYY-MM'),
+           subscriber_code,
+           received_at ASC
+       )
+       SELECT
+         mc.month_key,
+         COUNT(*) AS cancelled,
+         COALESCE(SUM(
+           CASE WHEN hs.mrr_contribution IS NOT NULL THEN hs.mrr_contribution
+                WHEN hs.plan_interval = 'ANNUAL' THEN ROUND(hs.price_value / 12, 2)
+                ELSE hs.price_value END
+         ), 0) AS mrr_lost
+       FROM monthly_cancels mc
+       LEFT JOIN hotmart_subscriptions hs
+         ON hs.subscriber_code = mc.subscriber_code
+         AND hs.price_value IS NOT NULL
+       GROUP BY mc.month_key
+       ORDER BY mc.month_key ASC`,
+      [[...CHURN_EVENTS]]
     ),
   ]);
 
@@ -91,20 +115,33 @@ export async function getRevenueMetrics(_startDate: Date, _endDate: Date): Promi
     };
   });
 
-  const cancellationByMonth = new Map<string, number>(
-    cancellationRows.map((r) => [r.month_key, parseInt(r.cancelled, 10)])
+  const cancellationByMonth = new Map<string, { count: number; mrrLost: number }>(
+    cancellationRows.map((r) => [
+      r.month_key,
+      { count: parseInt(r.cancelled, 10), mrrLost: parseFloat(r.mrr_lost) },
+    ])
   );
 
   let cumulativeSubs = 0;
   let cumulativeMrr = 0;
+  let totalMrrAdded = 0;
+
   const history = historyRows.map((r) => {
     const newSubs = parseInt(r.new_subs, 10);
     const mrrAdded = parseFloat(r.mrr_added);
     const monthKey = r.month_key;
-    const churnedSubs = cancellationByMonth.get(monthKey) ?? 0;
-    cumulativeSubs += newSubs - churnedSubs;
-    cumulativeMrr = Math.round((cumulativeMrr + mrrAdded) * 100) / 100;
-    const churnRate = cumulativeSubs > 0 ? Math.round((churnedSubs / cumulativeSubs) * 10000) / 100 : 0;
+    const cancel = cancellationByMonth.get(monthKey) ?? { count: 0, mrrLost: 0 };
+    const churnedSubs = cancel.count;
+    const mrrLost = cancel.mrrLost;
+
+    cumulativeSubs += newSubs;
+    const base = cumulativeSubs + churnedSubs;
+    const churnRate = base > 0 ? Math.round((churnedSubs / base) * 10000) / 100 : 0;
+    cumulativeSubs -= churnedSubs;
+
+    cumulativeMrr = Math.round((cumulativeMrr + mrrAdded - mrrLost) * 100) / 100;
+    totalMrrAdded += mrrAdded;
+
     return {
       month: r.month,
       monthKey,
@@ -113,13 +150,12 @@ export async function getRevenueMetrics(_startDate: Date, _endDate: Date): Promi
       arpu: cumulativeSubs > 0 ? Math.round((cumulativeMrr / cumulativeSubs) * 100) / 100 : 0,
       newSubs,
       churnedSubs,
+      mrrLost,
       totalSubs: cumulativeSubs,
       churnRate,
       byPlan: {},
     };
   });
 
-  const totalRevenue = history.reduce((sum, h) => sum + h.mrr, 0);
-
-  return { mrr, arr, arpu, totalSubscribers, totalRevenue, byPlan, history };
+  return { mrr, arr, arpu, totalSubscribers, totalRevenue: Math.round(totalMrrAdded * 100) / 100, byPlan, history };
 }
