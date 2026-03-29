@@ -43,6 +43,8 @@ export interface ACContact {
   fieldValues?: ACFieldValue[] | string[];
   tags?: string[];
   _resolvedFieldValues?: ACFieldValue[];
+  /** Date when a specific tag was assigned to this contact (set by getLeadContacts) */
+  _tagDate?: string;
 }
 
 export interface ACField {
@@ -160,14 +162,64 @@ export async function getContactsWithFields(
 
 /**
  * Fetch all contacts with a given tag ID (tagid param).
- * Includes UTM fieldValues. Filters by date in-memory after fetch.
+ * Includes UTM fieldValues and contactTags so we can determine the exact
+ * date the tag was assigned (_tagDate) rather than contact creation date.
  */
 export async function getLeadContacts(tagId: string): Promise<ACContact[]> {
   try {
-    return await paginateContacts({
-      tagid: tagId,
-      include: "fieldValues",
-    });
+    const results: ACContact[] = [];
+    let offset = 0;
+    const limit = 100;
+
+    while (true) {
+      const data = (await acFetch("/contacts", {
+        tagid: tagId,
+        include: "contactTags,fieldValues",
+        limit: limit.toString(),
+        offset: offset.toString(),
+      })) as {
+        contacts?: ACContact[];
+        contactTags?: Array<{ contact: string; tag: string; cdate: string }>;
+        fieldValues?: ACFieldValue[];
+        meta?: { total?: string };
+      };
+
+      const contacts = data.contacts ?? [];
+
+      // Map fieldValues by contact id
+      const topLevelFieldValues = data.fieldValues ?? [];
+      if (topLevelFieldValues.length > 0) {
+        const fvByContact: Record<string, ACFieldValue[]> = {};
+        for (const fv of topLevelFieldValues) {
+          const cid = fv.contact ?? fv.owner;
+          if (!fvByContact[cid]) fvByContact[cid] = [];
+          fvByContact[cid].push(fv);
+        }
+        for (const c of contacts) {
+          c._resolvedFieldValues = fvByContact[c.id] ?? [];
+        }
+      }
+
+      // Map contactTag assignment date by contact id (only for the requested tagId)
+      const contactTagsByContact: Record<string, string> = {};
+      for (const ct of data.contactTags ?? []) {
+        if (ct.tag === tagId) {
+          contactTagsByContact[ct.contact] = ct.cdate;
+        }
+      }
+      for (const c of contacts) {
+        if (contactTagsByContact[c.id]) {
+          c._tagDate = contactTagsByContact[c.id];
+        }
+      }
+
+      results.push(...contacts);
+
+      if (contacts.length < limit) break;
+      offset += limit;
+    }
+
+    return results;
   } catch (err) {
     logger.error({ err }, "Error fetching lead contacts from AC");
     throw err;

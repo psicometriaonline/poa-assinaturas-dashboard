@@ -66,10 +66,11 @@ export async function getConversionMetrics(
     if (!isNaN(accMs)) subscriberMap.set(email, accMs);
   }
 
-  // Filter leads to the selected date range by cdate
+  // Filter leads to the selected date range by _tagDate (date tag was assigned),
+  // falling back to cdate only if _tagDate is unavailable.
   const contacts = leadContacts.filter((c) => {
-    const cdateMs = new Date(c.cdate).getTime();
-    return cdateMs >= startMs && cdateMs <= endMs;
+    const refMs = new Date(c._tagDate ?? c.cdate).getTime();
+    return refMs >= startMs && refMs <= endMs;
   });
 
   const totalRegistrations = contacts.length;
@@ -90,14 +91,15 @@ export async function getConversionMetrics(
   }
 
   for (const c of contacts) {
-    const cdateMs = new Date(c.cdate).getTime();
+    // Use tag assignment date as the canonical "registration" date for this contact
+    const refMs = new Date(c._tagDate ?? c.cdate).getTime();
     const email = c.email?.toLowerCase().trim() ?? "";
     const accessionMs = subscriberMap.get(email);
     const converted = accessionMs !== undefined;
 
     if (converted) {
       totalConversions++;
-      const days = Math.max(0, Math.floor((accessionMs! - cdateMs) / (1000 * 60 * 60 * 24)));
+      const days = Math.max(0, Math.floor((accessionMs! - refMs) / (1000 * 60 * 60 * 24)));
       daysToConversion.push(days);
       if (days <= 7) distribution["0-7"]++;
       else if (days <= 14) distribution["8-14"]++;
@@ -111,9 +113,9 @@ export async function getConversionMetrics(
     channelMap[utmSource].registrations++;
     if (converted) channelMap[utmSource].conversions++;
 
-    // Monthly bucket
-    const cdateDate = new Date(cdateMs);
-    const monthKey = `${cdateDate.getFullYear()}-${String(cdateDate.getMonth() + 1).padStart(2, "0")}`;
+    // Monthly bucket by tag assignment date
+    const refDate = new Date(refMs);
+    const monthKey = `${refDate.getFullYear()}-${String(refDate.getMonth() + 1).padStart(2, "0")}`;
     const bucket = monthlyMap.get(monthKey);
     if (bucket) {
       bucket.registrations++;
