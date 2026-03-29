@@ -5,7 +5,7 @@ import { KPICard } from "@/components/KPICard";
 import { usePeriod } from "@/context/PeriodContext";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Legend,
+  ResponsiveContainer, Legend, LabelList,
 } from "recharts";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
@@ -184,19 +184,47 @@ export default function Funnel() {
         <KPICard title="Tempo Médio Conversão" value={f ? `${f.avgDaysToConversion} dias` : "—"} loading={isLoading} error={!!hasError} errorMessage={errMsg} invertChange />
       </div>
 
-      {/* Cadastros vs. Conversões (mensal) */}
+      {/* Cadastros vs. Conversões (mensal) — estilo Evolução Mensal */}
       <div className="bg-card border border-card-border rounded-xl p-5">
-        <h2 className="text-sm font-semibold text-foreground mb-4">Cadastros vs. Conversões (mensal)</h2>
-        {isLoading ? <div className="h-52 bg-muted rounded animate-pulse" /> : (
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={f?.history ?? []}>
+        <div className="mb-4">
+          <h2 className="text-sm font-semibold text-foreground">Cadastros vs. Conversões (mensal)</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">Free-Trial a partir de Mar/2026</p>
+        </div>
+        {isLoading ? <div className="h-64 bg-muted rounded animate-pulse" /> : (f?.history ?? []).length === 0 ? (
+          <p className="text-sm text-muted-foreground py-6 text-center">Aguardando dados de Mar/2026...</p>
+        ) : (
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart
+              data={(f?.history ?? []).map((h) => ({
+                month: h.month,
+                Conversões: h.conversions,
+                "Não Convertidos": h.registrations - h.conversions,
+              }))}
+              margin={{ top: 24, right: 16, left: 0, bottom: 4 }}
+            >
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-              <XAxis dataKey="month" tick={{ fill: "#94a3b8", fontSize: 11 }} />
-              <YAxis tick={{ fill: "#94a3b8", fontSize: 11 }} allowDecimals={false} />
-              <Tooltip contentStyle={TOOLTIP_STYLE} />
-              <Legend wrapperStyle={{ color: "#94a3b8", fontSize: 12 }} />
-              <Bar dataKey="registrations" name="Cadastros" fill={COLOR_LEADS} radius={[4, 4, 0, 0]} />
-              <Bar dataKey="conversions" name="Conversões" fill={COLOR_CONV} radius={[4, 4, 0, 0]} />
+              <XAxis dataKey="month" tick={{ fill: "#94a3b8", fontSize: 11 }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill: "#94a3b8", fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
+              <Tooltip
+                contentStyle={{ backgroundColor: "#0f172a", border: "1px solid #334155", borderRadius: 8, color: "#f1f5f9" }}
+                labelStyle={{ color: "#94a3b8", marginBottom: 4 }}
+                itemStyle={{ color: "#f1f5f9" }}
+                cursor={{ fill: "rgba(255,255,255,0.04)" }}
+                formatter={(value: number, name: string) => [value, name]}
+              />
+              <Legend
+                wrapperStyle={{ fontSize: 12, color: "#94a3b8", paddingTop: 12 }}
+                payload={[
+                  { value: "Conversões", type: "square", color: COLOR_CONV },
+                  { value: "Não Convertidos", type: "square", color: COLOR_LEADS },
+                ]}
+              />
+              <Bar dataKey="Conversões" stackId="funnel" fill={COLOR_CONV} maxBarSize={64} radius={[0, 0, 4, 4]}>
+                <LabelList dataKey="Conversões" position="insideTop" style={{ fill: "#fff", fontSize: 11, fontWeight: 600 }} formatter={(v: number) => v > 0 ? v : ""} />
+              </Bar>
+              <Bar dataKey="Não Convertidos" stackId="funnel" fill={COLOR_LEADS} maxBarSize={64} radius={[4, 4, 0, 0]}>
+                <LabelList dataKey="Não Convertidos" position="top" style={{ fill: "#94a3b8", fontSize: 11, fontWeight: 600 }} formatter={(v: number) => v > 0 ? v : ""} />
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         )}
