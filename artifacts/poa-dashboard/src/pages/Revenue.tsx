@@ -304,12 +304,12 @@ export default function Revenue() {
               <Legend
                 wrapperStyle={{ fontSize: 12, color: "#94a3b8", paddingTop: 12 }}
               />
-              {/* Cancelamentos primeiro = fundo (vermelho), Novas por cima (verde) */}
-              <Bar dataKey="Cancelamentos" stackId="monthly" fill="#ef4444" maxBarSize={64} radius={[0, 0, 4, 4]}>
-                <LabelList dataKey="Cancelamentos" position="insideTop" style={{ fill: "#fff", fontSize: 11, fontWeight: 600 }} formatter={(v: number) => v > 0 ? v : ""} />
+              {/* Novas primeiro = fundo (verde), Cancelamentos por cima (vermelho) */}
+              <Bar dataKey="Novas Assinaturas" stackId="monthly" fill="#22c55e" maxBarSize={64} radius={[0, 0, 4, 4]}>
+                <LabelList dataKey="Novas Assinaturas" position="insideTop" style={{ fill: "#fff", fontSize: 11, fontWeight: 600 }} formatter={(v: number) => v > 0 ? v : ""} />
               </Bar>
-              <Bar dataKey="Novas Assinaturas" stackId="monthly" fill="#22c55e" maxBarSize={64} radius={[4, 4, 0, 0]}>
-                <LabelList dataKey="Novas Assinaturas" position="top" style={{ fill: "#22c55e", fontSize: 11, fontWeight: 600 }} formatter={(v: number) => v > 0 ? v : ""} />
+              <Bar dataKey="Cancelamentos" stackId="monthly" fill="#ef4444" maxBarSize={64} radius={[4, 4, 0, 0]}>
+                <LabelList dataKey="Cancelamentos" position="top" style={{ fill: "#ef4444", fontSize: 11, fontWeight: 600 }} formatter={(v: number) => v > 0 ? v : ""} />
               </Bar>
             </BarChart>
           </ResponsiveContainer>
