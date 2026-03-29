@@ -37,12 +37,15 @@ function endOfMonth(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999);
 }
 
+// Funnel always starts from this date — the launch of the Free-Trial program
+const FUNNEL_START = new Date("2026-03-01T00:00:00.000Z");
+
 export async function getConversionMetrics(
   startDate: Date,
   endDate: Date
 ): Promise<ConversionMetrics> {
-  const startMs = startDate.getTime();
-  const endMs = endDate.getTime();
+  // Chart always begins at the launch of the trial program
+  const chartStart = startDate < FUNNEL_START ? FUNNEL_START : startDate;
 
   // Fetch free-trial contacts from AC (tag 401) and subscriber emails from local DB in parallel
   const [leadContacts, subscriberRows] = await Promise.all([
@@ -66,32 +69,17 @@ export async function getConversionMetrics(
     if (!isNaN(accMs)) subscriberMap.set(email, accMs);
   }
 
-  // Filter leads to the selected date range by _tagDate (date tag was assigned),
-  // falling back to cdate only if _tagDate is unavailable.
-  const contacts = leadContacts.filter((c) => {
-    const refMs = new Date(c._tagDate ?? c.cdate).getTime();
-    return refMs >= startMs && refMs <= endMs;
-  });
+  // KPI totals use ALL contacts with the tag (no date filter)
+  // so the count always matches what's in ActiveCampaign
+  const allContacts = leadContacts;
+  const totalRegistrations = allContacts.length;
 
-  const totalRegistrations = contacts.length;
   const distribution: ConversionMetrics["distributionByRange"] = { "0-7": 0, "8-14": 0, "15-30": 0, "+30": 0 };
   const daysToConversion: number[] = [];
-
   let totalConversions = 0;
-
   const channelMap: Record<string, { registrations: number; conversions: number }> = {};
 
-  // Monthly buckets
-  const monthlyMap: Map<string, { registrations: number; conversions: number; label: string }> = new Map();
-  const current = new Date(startDate);
-  while (current <= endDate) {
-    const key = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, "0")}`;
-    monthlyMap.set(key, { registrations: 0, conversions: 0, label: monthLabel(current) });
-    current.setMonth(current.getMonth() + 1);
-  }
-
-  for (const c of contacts) {
-    // Use tag assignment date as the canonical "registration" date for this contact
+  for (const c of allContacts) {
     const refMs = new Date(c._tagDate ?? c.cdate).getTime();
     const email = c.email?.toLowerCase().trim() ?? "";
     const accessionMs = subscriberMap.get(email);
@@ -112,8 +100,23 @@ export async function getConversionMetrics(
     if (!channelMap[utmSource]) channelMap[utmSource] = { registrations: 0, conversions: 0 };
     channelMap[utmSource].registrations++;
     if (converted) channelMap[utmSource].conversions++;
+  }
 
-    // Monthly bucket by tag assignment date
+  // Monthly chart: only from FUNNEL_START (March 2026) forward, skip empty leading months
+  const monthlyMap: Map<string, { registrations: number; conversions: number; label: string }> = new Map();
+  const current = new Date(chartStart);
+  current.setDate(1);
+  current.setHours(0, 0, 0, 0);
+  while (current <= endDate) {
+    const key = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, "0")}`;
+    monthlyMap.set(key, { registrations: 0, conversions: 0, label: monthLabel(current) });
+    current.setMonth(current.getMonth() + 1);
+  }
+
+  for (const c of allContacts) {
+    const refMs = new Date(c._tagDate ?? c.cdate).getTime();
+    const email = c.email?.toLowerCase().trim() ?? "";
+    const converted = subscriberMap.has(email);
     const refDate = new Date(refMs);
     const monthKey = `${refDate.getFullYear()}-${String(refDate.getMonth() + 1).padStart(2, "0")}`;
     const bucket = monthlyMap.get(monthKey);
