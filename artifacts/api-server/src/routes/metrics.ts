@@ -47,7 +47,7 @@ router.get("/overview", async (req: Request, res: Response) => {
       const now = new Date();
       const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-      const NEW_SUB_EVENTS = ["PURCHASE_APPROVED", "REACTIVATED_PURCHASE"];
+      const monthStartMs = monthStart.getTime();
 
       const [activeRow, mrrRow, newRow, cancelRow] = await Promise.all([
         query<{ count: string }>(
@@ -61,12 +61,14 @@ router.get("/overview", async (req: Request, res: Response) => {
            ), 0) as sum
            FROM hotmart_subscriptions WHERE status = 'ACTIVE' AND price_value IS NOT NULL`
         ),
+        // Count gross new subscriptions using accession_date (same logic as Revenue tab)
         query<{ count: string }>(
-          `SELECT COUNT(DISTINCT subscriber_code) as count
-           FROM hotmart_webhook_events
-           WHERE event = ANY($1::text[])
-             AND received_at >= $2`,
-          [NEW_SUB_EVENTS, monthStart]
+          `SELECT COUNT(*) as count
+           FROM hotmart_subscriptions
+           WHERE accession_date IS NOT NULL
+             AND accession_date >= $1
+             AND original_event IN ('IMPORT_CSV', 'PURCHASE_APPROVED', 'REACTIVATED_PURCHASE')`,
+          [monthStartMs]
         ),
         query<{ count: string }>(
           `SELECT COUNT(DISTINCT subscriber_code) as count
@@ -82,6 +84,7 @@ router.get("/overview", async (req: Request, res: Response) => {
       const arr = Math.round(mrr * 12 * 100) / 100;
       const newSubscribers = parseInt(newRow[0]?.count ?? "0", 10);
       const cancellations = parseInt(cancelRow[0]?.count ?? "0", 10);
+      const netNewSubscribers = newSubscribers - cancellations;
       // start-of-month base = active_now + cancellations_this_month - new_subs_this_month
       const startOfMonthBase = activeSubscribers + cancellations - newSubscribers;
       const churnDenominator = startOfMonthBase + cancellations;
@@ -94,6 +97,7 @@ router.get("/overview", async (req: Request, res: Response) => {
         activeSubscribers,
         newSubscribers,
         cancellations,
+        netNewSubscribers,
         churnRate,
         conversionRate: 0,
       };

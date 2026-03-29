@@ -86,9 +86,9 @@ export default function Overview() {
           errorMessage={errMsg}
         />
         <KPICard
-          title="Novos Assinantes"
+          title="Novas Assinaturas"
           value={d ? formatNumber(d.newSubscribers ?? 0) : "—"}
-          subtitle="via webhook · este mês"
+          subtitle="entradas brutas · este mês"
           loading={isLoading}
           error={!!hasError}
           errorMessage={errMsg}
@@ -101,6 +101,14 @@ export default function Overview() {
           error={!!hasError}
           errorMessage={errMsg}
           invertChange
+        />
+        <KPICard
+          title="Saldo de Assinaturas"
+          value={d ? (((d.netNewSubscribers ?? 0) >= 0 ? "+" : "") + formatNumber(d.netNewSubscribers ?? 0)) : "—"}
+          subtitle="novas − cancelamentos"
+          loading={isLoading}
+          error={!!hasError}
+          errorMessage={errMsg}
         />
         <KPICard
           title="Churn Rate"
