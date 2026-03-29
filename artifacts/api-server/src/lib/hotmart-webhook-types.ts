@@ -8,9 +8,16 @@ export interface HotmartWebhookPayload {
       subscriber?: { code: string };
       plan?: { id: string; name: string };
       status?: string;
+      id?: number;
+    };
+    subscriber?: {
+      code: string;
+      name?: string;
+      email?: string;
+      phone?: Record<string, string>;
     };
     buyer?: { name: string; email: string };
-    product?: { id: number; name: string; ucode: string };
+    product?: { id: number; name: string; ucode?: string };
     purchase?: {
       transaction: string;
       status: string;
@@ -20,6 +27,9 @@ export interface HotmartWebhookPayload {
       price?: { value: number; currency_code: string };
       offer?: { code: string };
     };
+    actual_recurrence_value?: number;
+    cancellation_date?: number;
+    date_next_charge?: number;
   };
 }
 

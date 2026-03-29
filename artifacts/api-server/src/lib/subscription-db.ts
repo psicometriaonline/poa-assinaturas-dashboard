@@ -46,7 +46,9 @@ export async function upsertSubscriptionFromWebhook(
 ): Promise<void> {
   const data = payload.data;
   const sub = data.subscription;
-  const subscriberCode = sub?.subscriber?.code;
+  // SUBSCRIPTION_CANCELLATION: subscriber at data.subscriber.code
+  // PURCHASE_*: subscriber at data.subscription.subscriber.code
+  const subscriberCode = sub?.subscriber?.code ?? data.subscriber?.code;
 
   if (!subscriberCode) {
     logger.warn({ event }, "Webhook missing subscriber code, skipping upsert");
@@ -57,10 +59,10 @@ export async function upsertSubscriptionFromWebhook(
   const productName = data.product?.name ?? null;
   const planId = sub?.plan?.id ?? null;
   const planName = sub?.plan?.name ?? null;
-  const buyerName = data.buyer?.name ?? null;
-  const buyerEmail = data.buyer?.email ?? null;
+  const buyerName = data.buyer?.name ?? data.subscriber?.name ?? null;
+  const buyerEmail = data.buyer?.email ?? data.subscriber?.email ?? null;
   const purchaseDate = data.purchase?.approved_date ?? payload.creation_date ?? null;
-  const priceValue = data.purchase?.price?.value ?? null;
+  const priceValue = data.purchase?.price?.value ?? data.actual_recurrence_value ?? null;
   const priceCurrency = data.purchase?.price?.currency_code ?? null;
 
   const isSwitchPlan = event === "SWITCH_PLAN";

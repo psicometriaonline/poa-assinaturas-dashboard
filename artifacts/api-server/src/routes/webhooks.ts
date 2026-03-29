@@ -21,7 +21,11 @@ router.post("/hotmart", async (req: Request, res: Response) => {
 
     const payload = req.body as HotmartWebhookPayload;
     const event = payload?.event ?? "UNKNOWN";
-    const subscriberCode = payload?.data?.subscription?.subscriber?.code ?? null;
+    // SUBSCRIPTION_CANCELLATION uses data.subscriber.code; PURCHASE_* use data.subscription.subscriber.code
+    const subscriberCode =
+      payload?.data?.subscription?.subscriber?.code ??
+      payload?.data?.subscriber?.code ??
+      null;
 
     logger.info({ event, subscriberCode }, "Hotmart webhook received");
 
