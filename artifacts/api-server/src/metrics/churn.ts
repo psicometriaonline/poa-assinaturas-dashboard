@@ -110,8 +110,7 @@ export async function getChurnMetrics(startDate: Date, endDate: Date): Promise<C
     }
   }
 
-  const lastMonthWithChurn = [...history].reverse().find((h) => h.total > 0);
-  const churnRate = lastMonthWithChurn?.churnRate ?? 0;
+  const churnRate = history.length > 0 ? (history[history.length - 1]?.churnRate ?? 0) : 0;
 
   return { totalCancellations, churnRate, history };
 }
