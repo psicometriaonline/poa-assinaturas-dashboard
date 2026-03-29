@@ -290,22 +290,26 @@ export default function Revenue() {
           <p className="text-sm text-muted-foreground py-6 text-center">Aguardando dados de Mar/2026...</p>
         ) : (
           <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={newSubsChartData} margin={{ top: 20, right: 16, left: 0, bottom: 4 }} barGap={4}>
+            <BarChart data={newSubsChartData} margin={{ top: 24, right: 16, left: 0, bottom: 4 }}>
               {grid}
               <XAxis dataKey="month" tick={axTick} axisLine={false} tickLine={false} />
               <YAxis tick={axTick} axisLine={false} tickLine={false} allowDecimals={false} />
               <Tooltip
-                {...tooltip}
+                contentStyle={{ backgroundColor: "#0f172a", border: "1px solid #334155", borderRadius: 8, color: "#f1f5f9" }}
+                labelStyle={{ color: "#94a3b8", marginBottom: 4 }}
+                itemStyle={{ color: "#f1f5f9" }}
+                cursor={{ fill: "rgba(255,255,255,0.04)" }}
                 formatter={(value: number, name: string) => [value, name]}
               />
               <Legend
                 wrapperStyle={{ fontSize: 12, color: "#94a3b8", paddingTop: 12 }}
               />
-              <Bar dataKey="Novas Assinaturas" fill="#22c55e" radius={[4, 4, 0, 0]} maxBarSize={48}>
-                <LabelList dataKey="Novas Assinaturas" position="top" style={{ fill: "#22c55e", fontSize: 11 }} formatter={(v: number) => v > 0 ? v : ""} />
+              {/* Cancelamentos primeiro = fundo (vermelho), Novas por cima (verde) */}
+              <Bar dataKey="Cancelamentos" stackId="monthly" fill="#ef4444" maxBarSize={64} radius={[0, 0, 4, 4]}>
+                <LabelList dataKey="Cancelamentos" position="insideTop" style={{ fill: "#fff", fontSize: 11, fontWeight: 600 }} formatter={(v: number) => v > 0 ? v : ""} />
               </Bar>
-              <Bar dataKey="Cancelamentos" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={48}>
-                <LabelList dataKey="Cancelamentos" position="top" style={{ fill: "#ef4444", fontSize: 11 }} formatter={(v: number) => v > 0 ? v : ""} />
+              <Bar dataKey="Novas Assinaturas" stackId="monthly" fill="#22c55e" maxBarSize={64} radius={[4, 4, 0, 0]}>
+                <LabelList dataKey="Novas Assinaturas" position="top" style={{ fill: "#22c55e", fontSize: 11, fontWeight: 600 }} formatter={(v: number) => v > 0 ? v : ""} />
               </Bar>
             </BarChart>
           </ResponsiveContainer>
