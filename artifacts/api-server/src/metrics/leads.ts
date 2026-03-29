@@ -83,11 +83,16 @@ function monthsBetween(start: Date, end: Date): string[] {
   return months;
 }
 
+// Leads data always starts from the Free-Trial program launch
+const LEADS_START = new Date("2026-03-01T00:00:00.000Z");
+
 export async function getLeadsMetrics(
   startDate: Date,
   endDate: Date
 ): Promise<LeadsMetrics> {
-  const startMs = startDate.getTime();
+  // Clamp start to program launch so data never shows before March 2026
+  const effectiveStart = startDate < LEADS_START ? LEADS_START : startDate;
+  const startMs = effectiveStart.getTime();
   const endMs = endDate.getTime();
 
   const [allFreeTrialContacts, alunosPoaEmails] = await Promise.all([
@@ -95,8 +100,9 @@ export async function getLeadsMetrics(
     getListContactEmails(ALUNOS_POA_LIST_ID),
   ]);
 
+  // Use _tagDate (when tag was assigned) as canonical date, falling back to cdate
   const contacts = allFreeTrialContacts.filter((c) => {
-    const t = new Date(c.cdate).getTime();
+    const t = new Date(c._tagDate ?? c.cdate).getTime();
     return t >= startMs && t <= endMs;
   });
 
@@ -127,7 +133,7 @@ export async function getLeadsMetrics(
   > = {};
 
   for (const contact of contacts) {
-    const cdate = new Date(contact.cdate);
+    const cdate = new Date(contact._tagDate ?? contact.cdate);
     const dateStr = toDateStr(cdate);
     const monthKey = toMonthKey(cdate);
     const utmSource =
@@ -175,7 +181,7 @@ export async function getLeadsMetrics(
       ? parseFloat(((totalConversions / totalLeads) * 100).toFixed(2))
       : 0;
 
-  const allMonths = monthsBetween(startDate, endDate);
+  const allMonths = monthsBetween(effectiveStart, endDate);
 
   const daily = Object.entries(dailyMap)
     .sort(([a], [b]) => a.localeCompare(b))
