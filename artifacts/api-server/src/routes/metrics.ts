@@ -5,8 +5,6 @@ import { getChurnMetrics } from "../metrics/churn";
 import { getConversionMetrics } from "../metrics/conversion";
 import { getAcquisitionMetrics } from "../metrics/acquisition";
 import { getLeadsMetrics, takeLeadsSnapshot, getLeadsSnapshots } from "../metrics/leads";
-import { getAllActiveSubscriptions, getAllSubscriptionsByStatus } from "../sources/hotmart";
-import { getDbSubscriptionSummary } from "../lib/subscription-db";
 import { query } from "../lib/db";
 import { CHURN_EVENTS } from "../lib/churn-events";
 import {
@@ -84,8 +82,10 @@ router.get("/overview", async (req: Request, res: Response) => {
       const arr = Math.round(mrr * 12 * 100) / 100;
       const newSubscribers = parseInt(newRow[0]?.count ?? "0", 10);
       const cancellations = parseInt(cancelRow[0]?.count ?? "0", 10);
-      const churnBase = activeSubscribers + cancellations;
-      const churnRate = churnBase > 0 ? parseFloat(((cancellations / churnBase) * 100).toFixed(2)) : 0;
+      // start-of-month base = active_now + cancellations_this_month - new_subs_this_month
+      const startOfMonthBase = activeSubscribers + cancellations - newSubscribers;
+      const churnDenominator = startOfMonthBase + cancellations;
+      const churnRate = churnDenominator > 0 ? parseFloat(((cancellations / churnDenominator) * 100).toFixed(2)) : 0;
 
       return {
         mrr,
@@ -239,29 +239,30 @@ router.get("/traffic", async (req: Request, res: Response) => {
 
 router.get("/debug/subscriptions", async (_req: Request, res: Response) => {
   try {
-    const statuses = ["ACTIVE", "DELAYED", "INACTIVE", "STARTED"] as const;
-    const results: Record<string, { total: number; products: Record<string, { name: string; count: number }> }> = {};
+    const [statusRows, productRows] = await Promise.all([
+      query<{ status: string; count: string }>(
+        `SELECT status, COUNT(*) as count FROM hotmart_subscriptions GROUP BY status ORDER BY count DESC`
+      ),
+      query<{ status: string; product_id: string; product_name: string; count: string }>(
+        `SELECT status, product_id, COALESCE(product_name, 'Sem produto') as product_name, COUNT(*) as count
+         FROM hotmart_subscriptions GROUP BY status, product_id, product_name ORDER BY status, count DESC`
+      ),
+    ]);
 
-    for (const status of statuses) {
-      try {
-        const subs = status === "ACTIVE"
-          ? await getAllActiveSubscriptions()
-          : await getAllSubscriptionsByStatus(status);
-        const products: Record<string, { name: string; count: number }> = {};
-        for (const s of subs) {
-          const pid = s.product?.id ?? "?";
-          const pname = s.product?.name ?? "?";
-          if (!products[pid]) products[pid] = { name: pname, count: 0 };
-          products[pid].count++;
-        }
-        results[status] = { total: subs.length, products };
-      } catch (err) {
-        results[status] = { total: -1, products: { error: { name: String(err), count: 0 } } };
-      }
+    const byStatus: Record<string, { total: number; products: Record<string, { name: string; count: number }> }> = {};
+    for (const row of statusRows) {
+      byStatus[row.status] = { total: parseInt(row.count, 10), products: {} };
+    }
+    for (const row of productRows) {
+      if (!byStatus[row.status]) byStatus[row.status] = { total: 0, products: {} };
+      byStatus[row.status].products[row.product_id ?? "?"] = {
+        name: row.product_name,
+        count: parseInt(row.count, 10),
+      };
     }
 
-    const grandTotal = Object.values(results).reduce((s, r) => s + Math.max(r.total, 0), 0);
-    res.json({ grandTotal, byStatus: results });
+    const grandTotal = Object.values(byStatus).reduce((s, r) => s + r.total, 0);
+    res.json({ source: "local-db", grandTotal, byStatus });
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }

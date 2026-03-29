@@ -23,6 +23,13 @@ export interface RevenueMetrics {
   }>;
 }
 
+function formatMonthKey(monthKey: string): string {
+  const [year, month] = monthKey.split("-");
+  const d = new Date(parseInt(year, 10), parseInt(month, 10) - 1, 1);
+  const names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return `${names[d.getMonth()]}/${year.slice(2)}`;
+}
+
 export async function getRevenueMetrics(_startDate: Date, _endDate: Date): Promise<RevenueMetrics> {
   const [summaryRows, byPlanRows, historyRows, cancellationRows] = await Promise.all([
     query<{ mrr: string; count: string }>(
@@ -115,6 +122,17 @@ export async function getRevenueMetrics(_startDate: Date, _endDate: Date): Promi
     };
   });
 
+  const acquisitionByMonth = new Map<string, { month: string; newSubs: number; mrrAdded: number }>(
+    historyRows.map((r) => [
+      r.month_key,
+      {
+        month: r.month,
+        newSubs: parseInt(r.new_subs, 10),
+        mrrAdded: parseFloat(r.mrr_added),
+      },
+    ])
+  );
+
   const cancellationByMonth = new Map<string, { count: number; mrrLost: number }>(
     cancellationRows.map((r) => [
       r.month_key,
@@ -122,28 +140,32 @@ export async function getRevenueMetrics(_startDate: Date, _endDate: Date): Promi
     ])
   );
 
+  const allMonthKeys = Array.from(
+    new Set([...acquisitionByMonth.keys(), ...cancellationByMonth.keys()])
+  ).sort();
+
   let cumulativeSubs = 0;
   let cumulativeMrr = 0;
   let totalMrrAdded = 0;
 
-  const history = historyRows.map((r) => {
-    const newSubs = parseInt(r.new_subs, 10);
-    const mrrAdded = parseFloat(r.mrr_added);
-    const monthKey = r.month_key;
+  const history = allMonthKeys.map((monthKey) => {
+    const acq = acquisitionByMonth.get(monthKey);
+    const newSubs = acq?.newSubs ?? 0;
+    const mrrAdded = acq?.mrrAdded ?? 0;
     const cancel = cancellationByMonth.get(monthKey) ?? { count: 0, mrrLost: 0 };
     const churnedSubs = cancel.count;
     const mrrLost = cancel.mrrLost;
 
-    cumulativeSubs += newSubs;
-    const base = cumulativeSubs + churnedSubs;
+    const startSubs = cumulativeSubs;
+    const base = startSubs + churnedSubs;
     const churnRate = base > 0 ? Math.round((churnedSubs / base) * 10000) / 100 : 0;
-    cumulativeSubs -= churnedSubs;
+    cumulativeSubs += newSubs - churnedSubs;
 
     cumulativeMrr = Math.round((cumulativeMrr + mrrAdded - mrrLost) * 100) / 100;
     totalMrrAdded += mrrAdded;
 
     return {
-      month: r.month,
+      month: acq?.month ?? formatMonthKey(monthKey),
       monthKey,
       mrr: cumulativeMrr,
       arr: Math.round(cumulativeMrr * 12 * 100) / 100,
@@ -157,5 +179,13 @@ export async function getRevenueMetrics(_startDate: Date, _endDate: Date): Promi
     };
   });
 
-  return { mrr, arr, arpu, totalSubscribers, totalRevenue: Math.round(totalMrrAdded * 100) / 100, byPlan, history };
+  return {
+    mrr,
+    arr,
+    arpu,
+    totalSubscribers,
+    totalRevenue: Math.round(totalMrrAdded * 100) / 100,
+    byPlan,
+    history,
+  };
 }
