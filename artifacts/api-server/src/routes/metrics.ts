@@ -206,15 +206,27 @@ router.get("/traffic", async (req: Request, res: Response) => {
           ? parseFloat((totaltimeVal / uniquesVal / 60).toFixed(2))
           : 0;
 
-      const hourlyMap: Record<string, number> = {};
+      // Build 7×24 matrix: weeklyHourly[dayRow][hour]
+      // Rows: 0=Seg(Mon)…5=Sáb(Sat), 6=Dom(Sun)
+      const BRT_DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+      const DAY_TO_ROW = [6, 0, 1, 2, 3, 4, 5]; // JS Sunday=0 → row 6
+      const weeklyHourly: number[][] = Array.from({ length: 7 }, () => new Array(24).fill(0));
+      const brtFmt = new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Sao_Paulo",
+        hour: "numeric",
+        weekday: "short",
+        hour12: false,
+      });
       for (const pv of hrData.pageviews) {
-        const hour = new Date(pv.x).getHours().toString();
-        hourlyMap[hour] = (hourlyMap[hour] ?? 0) + pv.y;
+        const parts = brtFmt.formatToParts(new Date(pv.x));
+        const hourPart = parts.find((p) => p.type === "hour");
+        const weekdayPart = parts.find((p) => p.type === "weekday");
+        if (!hourPart || !weekdayPart) continue;
+        const hour = parseInt(hourPart.value) % 24;
+        const jsDay = BRT_DAYS.indexOf(weekdayPart.value);
+        if (jsDay === -1) continue;
+        weeklyHourly[DAY_TO_ROW[jsDay]][hour] += pv.y;
       }
-      const hourly = Array.from({ length: 24 }, (_, h) => ({
-        x: h.toString(),
-        y: hourlyMap[h.toString()] ?? 0,
-      }));
 
       return {
         stats: {
@@ -232,7 +244,7 @@ router.get("/traffic", async (req: Request, res: Response) => {
         utmMedium: safeArray(utmMedium, 10),
         utmCampaign: safeArray(utmCampaign, 10),
         countries: safeArray(countries),
-        hourly,
+        weeklyHourly,
       };
     }, TRAFFIC_TTL);
     res.json({ error: false, data });

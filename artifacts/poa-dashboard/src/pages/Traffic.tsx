@@ -89,7 +89,8 @@ export default function Traffic() {
 
   const countryMap = d ? buildCountryMap(d.countries) : {};
   const maxCountry = d?.countries.length ? Math.max(...d.countries.map((c) => c.y)) : 1;
-  const maxHourly = d?.hourly.length ? Math.max(...d.hourly.map((h) => h.y), 1) : 1;
+  const weeklyHourly = d?.weeklyHourly ?? Array.from({ length: 7 }, () => new Array(24).fill(0));
+  const maxHourly = Math.max(1, ...weeklyHourly.flat());
 
   const lineData =
     d?.pageviewsHistory.map((pv, i) => ({
@@ -342,46 +343,61 @@ export default function Traffic() {
         )}
       </div>
 
-      {/* Hourly Heatmap */}
+      {/* Hourly Heatmap — 7 days × 24 hours */}
       <div className="rounded-xl border border-border bg-card p-6">
         <h3 className="text-sm font-semibold text-foreground mb-1">Horários de Pico</h3>
-        <p className="text-xs text-muted-foreground mb-4">Pageviews por hora do dia (horário de Brasília)</p>
+        <p className="text-xs text-muted-foreground mb-4">Pageviews por dia da semana e hora (horário de Brasília)</p>
         {isLoading ? (
-          <div className="h-20 flex items-center justify-center text-muted-foreground text-sm">Carregando…</div>
+          <div className="h-32 flex items-center justify-center text-muted-foreground text-sm">Carregando…</div>
         ) : (
           <div className="overflow-x-auto">
-            <div className="flex gap-1 min-w-max">
-              {(d?.hourly ?? Array.from({ length: 24 }, (_, i) => ({ x: i.toString(), y: 0 }))).map((h) => {
-                const intensity = h.y > 0 ? Math.max(0.1, h.y / maxHourly) : 0;
-                return (
-                  <div key={h.x} className="flex flex-col items-center gap-1">
-                    <div
-                      className="w-10 h-10 rounded flex items-center justify-center text-xs font-medium transition-colors"
-                      style={{
-                        background: h.y > 0 ? `rgba(59, 130, 246, ${intensity})` : "hsl(220 30% 14%)",
-                        color: intensity > 0.5 ? "#fff" : "hsl(var(--muted-foreground))",
-                      }}
-                      title={`${formatHour(h.x)}: ${h.y} pageviews`}
-                    >
-                      {h.y > 0 ? h.y : ""}
-                    </div>
-                    <span className="text-[10px] text-muted-foreground">{formatHour(h.x)}</span>
+            <div className="min-w-max">
+              {/* Hour labels row */}
+              <div className="flex gap-px mb-px ml-9">
+                {Array.from({ length: 24 }, (_, h) => (
+                  <div key={h} className="w-9 text-center text-[9px] text-muted-foreground/70">
+                    {String(h).padStart(2, "0")}h
                   </div>
-                );
-              })}
-            </div>
-            <div className="mt-3 flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">Menor</span>
-              <div className="flex gap-0.5">
-                {[0.1, 0.25, 0.45, 0.65, 0.85, 1].map((v) => (
-                  <div
-                    key={v}
-                    className="w-5 h-3 rounded-sm"
-                    style={{ background: `rgba(59, 130, 246, ${v})` }}
-                  />
                 ))}
               </div>
-              <span className="text-xs text-muted-foreground">Maior</span>
+              {/* Data rows */}
+              {["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((dayLabel, rowIdx) => (
+                <div key={dayLabel} className="flex items-center gap-px mb-px">
+                  <span className="w-8 shrink-0 text-[10px] text-muted-foreground text-right pr-1.5">
+                    {dayLabel}
+                  </span>
+                  {(weeklyHourly[rowIdx] ?? new Array(24).fill(0)).map((val, hour) => {
+                    const intensity = val > 0 ? Math.max(0.12, val / maxHourly) : 0;
+                    return (
+                      <div
+                        key={hour}
+                        className="w-9 h-7 rounded-sm flex items-center justify-center text-[9px] font-medium transition-colors cursor-default"
+                        style={{
+                          background: val > 0 ? `rgba(59, 130, 246, ${intensity})` : "hsl(220 30% 14%)",
+                          color: intensity > 0.55 ? "#fff" : "hsl(var(--muted-foreground))",
+                        }}
+                        title={`${dayLabel} ${String(hour).padStart(2, "0")}h: ${val} pageviews`}
+                      >
+                        {val > 0 ? val : ""}
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+              {/* Legend */}
+              <div className="mt-3 flex items-center gap-2 ml-9">
+                <span className="text-xs text-muted-foreground">Menor</span>
+                <div className="flex gap-0.5">
+                  {[0.12, 0.28, 0.45, 0.62, 0.8, 1].map((v) => (
+                    <div
+                      key={v}
+                      className="w-5 h-3 rounded-sm"
+                      style={{ background: `rgba(59, 130, 246, ${v})` }}
+                    />
+                  ))}
+                </div>
+                <span className="text-xs text-muted-foreground">Maior</span>
+              </div>
             </div>
           </div>
         )}

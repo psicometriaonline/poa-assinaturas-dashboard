@@ -105,7 +105,7 @@ export interface TrafficData {
   utmMedium: UmamiMetric[];
   utmCampaign: UmamiMetric[];
   countries: UmamiMetric[];
-  hourly: UmamiMetric[];
+  weeklyHourly: number[][];
 }
 
 export async function fetchTraffic(start: string, end: string) {
