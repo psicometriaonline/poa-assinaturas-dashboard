@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   LineChart,
@@ -12,7 +12,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
-import { ComposableMap, Geographies, Geography } from "react-simple-maps";
+import { ComposableMap, Geographies, Geography, ZoomableGroup } from "react-simple-maps";
 import { fetchTraffic, type UmamiMetric } from "@/lib/api";
 import { KPICard } from "@/components/KPICard";
 import { usePeriod } from "@/context/PeriodContext";
@@ -77,6 +77,12 @@ export default function Traffic() {
   const { dateRange } = usePeriod();
   const { start, end } = dateRange;
   const [utmTab, setUtmTab] = useState<"utmSource" | "utmMedium" | "utmCampaign">("utmSource");
+  const [mapZoom, setMapZoom] = useState(1);
+  const [mapCenter, setMapCenter] = useState<[number, number]>([0, 0]);
+  const handleMoveEnd = useCallback((pos: { coordinates: [number, number]; zoom: number }) => {
+    setMapCenter(pos.coordinates);
+    setMapZoom(pos.zoom);
+  }, []);
 
   const { data: resp, isLoading, isError } = useQuery({
     queryKey: ["traffic", start, end],
@@ -282,49 +288,83 @@ export default function Traffic() {
 
       {/* World Map */}
       <div className="rounded-xl border border-border bg-card p-6">
-        <h3 className="text-sm font-semibold text-foreground mb-1">Visitantes por País</h3>
-        <p className="text-xs text-muted-foreground mb-4">
-          {d?.countries.length
-            ? `${d.countries.length} países detectados`
-            : isLoading
-            ? "Carregando…"
-            : "Sem dados"}
-        </p>
-        <div className="w-full" style={{ height: 320 }}>
+        <div className="flex items-center justify-between mb-1">
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">Visitantes por País</h3>
+            <p className="text-xs text-muted-foreground">
+              {d?.countries.length
+                ? `${d.countries.length} países detectados`
+                : isLoading
+                ? "Carregando…"
+                : "Sem dados"}
+            </p>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setMapZoom((z) => Math.min(z * 1.5, 8))}
+              className="w-7 h-7 rounded flex items-center justify-center text-sm font-bold text-muted-foreground hover:text-foreground hover:bg-sidebar-accent transition-colors"
+              title="Zoom +"
+            >
+              +
+            </button>
+            <button
+              onClick={() => setMapZoom((z) => Math.max(z / 1.5, 1))}
+              className="w-7 h-7 rounded flex items-center justify-center text-sm font-bold text-muted-foreground hover:text-foreground hover:bg-sidebar-accent transition-colors"
+              title="Zoom −"
+            >
+              −
+            </button>
+            <button
+              onClick={() => { setMapZoom(1); setMapCenter([0, 0]); }}
+              className="px-2 h-7 rounded text-[10px] font-medium text-muted-foreground hover:text-foreground hover:bg-sidebar-accent transition-colors"
+              title="Resetar"
+            >
+              Reset
+            </button>
+          </div>
+        </div>
+        <div className="w-full overflow-hidden rounded-lg" style={{ height: 440 }}>
           <ComposableMap
-            projectionConfig={{ scale: 140 }}
+            projectionConfig={{ scale: 160 }}
             style={{ width: "100%", height: "100%" }}
           >
-            <Geographies geography={GEO_URL}>
-              {({ geographies }: { geographies: Array<{ rsmKey: string; id: string; properties: Record<string, unknown> }> }) =>
-                geographies.map((geo) => {
-                  const numId = parseInt(geo.id, 10);
-                  const visits = countryMap[numId] ?? 0;
-                  const intensity = visits > 0 ? Math.max(0.15, visits / maxCountry) : 0;
-                  return (
-                    <Geography
-                      key={geo.rsmKey}
-                      geography={geo}
-                      fill={
-                        visits > 0
-                          ? `rgba(59, 130, 246, ${intensity})`
-                          : "hsl(220 30% 14%)"
-                      }
-                      stroke="hsl(220 30% 20%)"
-                      strokeWidth={0.5}
-                      style={{
-                        default: { outline: "none" },
-                        hover: { outline: "none", fill: visits > 0 ? `rgba(96, 165, 250, ${Math.min(intensity + 0.2, 1)})` : "hsl(220 30% 18%)" },
-                        pressed: { outline: "none" },
-                      }}
-                    />
-                  );
-                })
-              }
-            </Geographies>
+            <ZoomableGroup
+              zoom={mapZoom}
+              center={mapCenter}
+              onMoveEnd={handleMoveEnd}
+              minZoom={1}
+              maxZoom={8}
+            >
+              <Geographies geography={GEO_URL}>
+                {({ geographies }: { geographies: Array<{ rsmKey: string; id: string; properties: Record<string, unknown> }> }) =>
+                  geographies.map((geo) => {
+                    const numId = parseInt(geo.id, 10);
+                    const visits = countryMap[numId] ?? 0;
+                    const intensity = visits > 0 ? Math.max(0.15, visits / maxCountry) : 0;
+                    return (
+                      <Geography
+                        key={geo.rsmKey}
+                        geography={geo}
+                        fill={
+                          visits > 0
+                            ? `rgba(59, 130, 246, ${intensity})`
+                            : "hsl(220 30% 14%)"
+                        }
+                        stroke="hsl(220 30% 20%)"
+                        strokeWidth={0.5}
+                        style={{
+                          default: { outline: "none" },
+                          hover: { outline: "none", fill: visits > 0 ? `rgba(96, 165, 250, ${Math.min(intensity + 0.2, 1)})` : "hsl(220 30% 18%)" },
+                          pressed: { outline: "none" },
+                        }}
+                      />
+                    );
+                  })
+                }
+              </Geographies>
+            </ZoomableGroup>
           </ComposableMap>
         </div>
-        {/* Country legend */}
         {d && d.countries.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2">
             {d.countries.slice(0, 8).map((c) => (

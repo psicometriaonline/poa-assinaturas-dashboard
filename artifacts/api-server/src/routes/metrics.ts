@@ -169,11 +169,14 @@ router.get("/traffic", async (req: Request, res: Response) => {
       const startAt = startDate.getTime();
       const endAt = endDate.getTime();
 
+      const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+      const hourlyStartAt = Math.max(startAt, endAt - THIRTY_DAYS_MS);
+
       const [stats, pageviewsData, hourlyData, topPaths, utmSource, utmMedium, utmCampaign, countries] =
         await Promise.allSettled([
           getWebsiteStats(startAt, endAt),
           getPageViews(startAt, endAt),
-          getHourlyPageviews(startAt, endAt),
+          getHourlyPageviews(hourlyStartAt, endAt),
           getUrlPaths(startAt, endAt),
           getUtmSources(startAt, endAt),
           getUtmMedium(startAt, endAt),

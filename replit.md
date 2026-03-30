@@ -59,7 +59,7 @@ Tabelas criadas para sistema de webhooks:
 
 ### Cache
 
-In-memory com TTL de 1 hora.
+In-memory com TTL de 1 hora (default). Tráfego usa TTL de 5 min.
 
 ### Sistema de mesclagem de dados
 
@@ -95,7 +95,7 @@ Opcional: definir `HOTMART_WEBHOOK_TOKEN` nos secrets para validar o `hottok` en
 | `/`         | `Overview.tsx`         | Visão Geral — MRR, assinantes, evolução          |
 | `/revenue`  | `Revenue.tsx`          | Receita & Churn — gráficos + tabela mensal       |
 | `/funnel`   | `Funnel.tsx`           | Funil de conversão                               |
-| `/traffic`  | `Traffic.tsx`          | Análise de Tráfego (Umami)                       |
+| `/traffic`  | `Traffic.tsx`          | Análise de Tráfego (Umami) — mapa com zoom interativo, heatmap horário 7×24 BRT |
 
 ### Contexto global de período
 
