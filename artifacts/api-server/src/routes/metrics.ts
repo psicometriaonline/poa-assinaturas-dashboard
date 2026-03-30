@@ -160,6 +160,7 @@ router.get("/acquisition", async (req: Request, res: Response) => {
 router.get("/traffic", async (req: Request, res: Response) => {
   const { startDate, endDate } = parseDateRange(req);
   const cacheKey = `traffic:${startDate.toISOString()}:${endDate.toISOString()}`;
+  const TRAFFIC_TTL = 5 * 60 * 1000;
   try {
     const data = await withCache(cacheKey, async () => {
       const startAt = startDate.getTime();
@@ -233,7 +234,7 @@ router.get("/traffic", async (req: Request, res: Response) => {
         countries: safeArray(countries),
         hourly,
       };
-    });
+    }, TRAFFIC_TTL);
     res.json({ error: false, data });
   } catch (err) {
     req.log.error({ err }, "Error fetching traffic");

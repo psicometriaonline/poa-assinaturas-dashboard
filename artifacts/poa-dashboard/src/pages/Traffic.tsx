@@ -81,6 +81,8 @@ export default function Traffic() {
   const { data: resp, isLoading, isError } = useQuery({
     queryKey: ["traffic", start, end],
     queryFn: () => fetchTraffic(start, end),
+    staleTime: 2 * 60 * 1000,
+    refetchInterval: 2 * 60 * 1000,
   });
 
   const d = resp?.data ?? null;
