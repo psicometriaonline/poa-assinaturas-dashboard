@@ -16,6 +16,7 @@ import {
   getUtmCampaign,
   getCountries,
   getHourlyPageviews,
+  readStat,
 } from "../sources/umami";
 
 const router: IRouter = Router();
@@ -187,15 +188,15 @@ router.get("/traffic", async (req: Request, res: Response) => {
         return max !== undefined ? arr.slice(0, max) : arr;
       }
 
-      const fallbackStats = { pageviews: { value: 0 }, visitors: { value: 0 }, bounces: { value: 0 }, totaltime: { value: 0 } };
+      const fallbackStats = { pageviews: 0, visitors: 0, bounces: 0, totaltime: 0 };
       const statsData = settled(stats, fallbackStats);
       const pvData = settled(pageviewsData, { pageviews: [], sessions: [] });
       const hrData = settled(hourlyData, { pageviews: [], sessions: [] });
 
-      const pageviewsVal = statsData.pageviews?.value ?? 0;
-      const uniquesVal = statsData.visitors?.value ?? statsData.uniques?.value ?? 0;
-      const bouncesVal = statsData.bounces?.value ?? 0;
-      const totaltimeVal = statsData.totaltime?.value ?? 0;
+      const pageviewsVal = readStat(statsData.pageviews);
+      const uniquesVal = readStat(statsData.visitors) || readStat(statsData.uniques) || readStat(statsData.visits);
+      const bouncesVal = readStat(statsData.bounces);
+      const totaltimeVal = readStat(statsData.totaltime);
 
       const bounceRate =
         pageviewsVal > 0

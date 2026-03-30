@@ -29,13 +29,22 @@ async function umamiFetch(path: string, params: Record<string, string> = {}): Pr
   return response.json();
 }
 
+// Umami Cloud v1 returns flat numbers; older self-hosted returns { value, prev }
+type StatField = number | { value: number; prev?: number };
+
 export interface UmamiStats {
-  pageviews: { value: number; prev?: number };
-  uniques?: { value: number; prev?: number };
-  visitors?: { value: number; prev?: number };
-  visits?: { value: number; prev?: number };
-  bounces: { value: number; prev?: number };
-  totaltime: { value: number; prev?: number };
+  pageviews: StatField;
+  uniques?: StatField;
+  visitors?: StatField;
+  visits?: StatField;
+  bounces: StatField;
+  totaltime: StatField;
+}
+
+export function readStat(field: StatField | undefined): number {
+  if (field === undefined || field === null) return 0;
+  if (typeof field === "number") return field;
+  return field.value ?? 0;
 }
 
 export interface UmamiMetric {
