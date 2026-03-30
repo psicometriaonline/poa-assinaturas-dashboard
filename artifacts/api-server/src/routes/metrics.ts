@@ -28,12 +28,14 @@ router.use((_req: Request, res: Response, next: () => void) => {
 
 function parseDateRange(req: Request): { startDate: Date; endDate: Date } {
   const now = new Date();
-  const endDate = req.query.end
-    ? new Date(req.query.end as string)
-    : new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  // Use BRT (UTC-3) boundaries so that date strings from the browser
+  // cover the full calendar day in Brazil, not a midnight-UTC cutoff
   const startDate = req.query.start
-    ? new Date(req.query.start as string)
+    ? new Date(`${req.query.start as string}T00:00:00-03:00`)
     : new Date(now.getFullYear(), now.getMonth() - 11, 1);
+  const endDate = req.query.end
+    ? new Date(`${req.query.end as string}T23:59:59-03:00`)
+    : new Date(now.getFullYear(), now.getMonth() + 1, 0);
   return { startDate, endDate };
 }
 
