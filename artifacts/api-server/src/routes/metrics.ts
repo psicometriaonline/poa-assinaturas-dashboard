@@ -2,7 +2,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { withCache } from "../cache";
 import { getRevenueMetrics } from "../metrics/revenue";
 import { getChurnMetrics } from "../metrics/churn";
-import { getConversionMetrics } from "../metrics/conversion";
+import { getConversionMetrics, type ConversionMetrics } from "../metrics/conversion";
 import { getAcquisitionMetrics } from "../metrics/acquisition";
 import { getLeadsMetrics, takeLeadsSnapshot, getLeadsSnapshots } from "../metrics/leads";
 import { query } from "../lib/db";
@@ -52,7 +52,7 @@ router.get("/overview", async (req: Request, res: Response) => {
 
       const monthStartMs = monthStart.getTime();
 
-      const [activeRow, mrrRow, newRow, cancelRow] = await Promise.all([
+      const [activeRow, mrrRow, newRow, cancelRow, funnelMetrics] = await Promise.all([
         query<{ count: string }>(
           `SELECT COUNT(*) as count FROM hotmart_subscriptions WHERE status = 'ACTIVE'`
         ),
@@ -64,7 +64,6 @@ router.get("/overview", async (req: Request, res: Response) => {
            ), 0) as sum
            FROM hotmart_subscriptions WHERE status = 'ACTIVE' AND price_value IS NOT NULL`
         ),
-        // Count gross new subscriptions using accession_date (same logic as Revenue tab)
         query<{ count: string }>(
           `SELECT COUNT(*) as count
            FROM hotmart_subscriptions
@@ -80,6 +79,7 @@ router.get("/overview", async (req: Request, res: Response) => {
              AND received_at >= $2`,
           [[...CHURN_EVENTS], monthStart]
         ),
+        getConversionMetrics(monthStart, now).catch((): ConversionMetrics | null => null),
       ]);
 
       const activeSubscribers = parseInt(activeRow[0]?.count ?? "0", 10);
@@ -88,10 +88,10 @@ router.get("/overview", async (req: Request, res: Response) => {
       const newSubscribers = parseInt(newRow[0]?.count ?? "0", 10);
       const cancellations = parseInt(cancelRow[0]?.count ?? "0", 10);
       const netNewSubscribers = newSubscribers - cancellations;
-      // start-of-month base = active_now + cancellations_this_month - new_subs_this_month
       const startOfMonthBase = activeSubscribers + cancellations - newSubscribers;
       const churnDenominator = startOfMonthBase + cancellations;
       const churnRate = churnDenominator > 0 ? parseFloat(((cancellations / churnDenominator) * 100).toFixed(2)) : 0;
+      const conversionRate = funnelMetrics?.conversionRate ?? 0;
 
       return {
         mrr,
@@ -102,7 +102,7 @@ router.get("/overview", async (req: Request, res: Response) => {
         cancellations,
         netNewSubscribers,
         churnRate,
-        conversionRate: 0,
+        conversionRate,
       };
     });
     res.json({ error: false, data });
