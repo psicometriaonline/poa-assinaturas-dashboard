@@ -124,7 +124,7 @@ export default function Traffic() {
       )}
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <KPICard
           title="Total Pageviews"
           value={(d?.stats.pageviews ?? 0).toLocaleString("pt-BR")}
@@ -148,7 +148,7 @@ export default function Traffic() {
       </div>
 
       {/* Visitors Line Chart */}
-      <div className="rounded-xl border border-border bg-card p-6">
+      <div className="rounded-xl border border-border bg-card p-4 sm:p-6">
         <h3 className="text-sm font-semibold text-foreground mb-4">Visitantes ao longo do tempo</h3>
         {isLoading ? (
           <div className="h-64 flex items-center justify-center text-muted-foreground text-sm">Carregando…</div>
@@ -192,9 +192,9 @@ export default function Traffic() {
       </div>
 
       {/* Middle row: Top Pages + UTM Channels */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
         {/* Top Pages Table */}
-        <div className="rounded-xl border border-border bg-card p-6">
+        <div className="rounded-xl border border-border bg-card p-4 sm:p-6">
           <h3 className="text-sm font-semibold text-foreground mb-4">Top Páginas</h3>
           {isLoading ? (
             <div className="h-48 flex items-center justify-center text-muted-foreground text-sm">Carregando…</div>
@@ -233,7 +233,7 @@ export default function Traffic() {
         </div>
 
         {/* UTM Channels */}
-        <div className="rounded-xl border border-border bg-card p-6">
+        <div className="rounded-xl border border-border bg-card p-4 sm:p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-foreground">Canais de Aquisição</h3>
             <div className="flex gap-1">
@@ -287,7 +287,7 @@ export default function Traffic() {
       </div>
 
       {/* World Map */}
-      <div className="rounded-xl border border-border bg-card p-6">
+      <div className="rounded-xl border border-border bg-card p-4 sm:p-6">
         <div className="flex items-center justify-between mb-1">
           <div>
             <h3 className="text-sm font-semibold text-foreground">Visitantes por País</h3>
@@ -323,7 +323,7 @@ export default function Traffic() {
             </button>
           </div>
         </div>
-        <div className="w-full overflow-hidden rounded-lg" style={{ height: 440 }}>
+        <div className="w-full overflow-hidden rounded-lg h-[260px] sm:h-[360px] lg:h-[440px]">
           <ComposableMap
             projectionConfig={{ scale: 160 }}
             style={{ width: "100%", height: "100%" }}
@@ -384,13 +384,13 @@ export default function Traffic() {
       </div>
 
       {/* Hourly Heatmap — 7 days × 24 hours */}
-      <div className="rounded-xl border border-border bg-card p-6">
+      <div className="rounded-xl border border-border bg-card p-4 sm:p-6">
         <h3 className="text-sm font-semibold text-foreground mb-1">Horários de Pico</h3>
         <p className="text-xs text-muted-foreground mb-4">Pageviews por dia da semana e hora (horário de Brasília)</p>
         {isLoading ? (
           <div className="h-32 flex items-center justify-center text-muted-foreground text-sm">Carregando…</div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto scrollbar-hide">
             <div className="min-w-max">
               {/* Hour labels row */}
               <div className="flex gap-px mb-px ml-9">

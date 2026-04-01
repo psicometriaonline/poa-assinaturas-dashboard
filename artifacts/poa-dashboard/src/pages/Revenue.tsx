@@ -66,52 +66,52 @@ export default function Revenue() {
       )}
 
       {/* ── Summary row (image 1) ─────────────────────────────────── */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-card border border-card-border rounded-xl p-6 flex flex-col items-center justify-center text-center gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+        <div className="bg-card border border-card-border rounded-xl p-4 sm:p-6 flex flex-col items-center justify-center text-center gap-1 sm:gap-2">
           {isLoading ? (
             <div className="h-8 w-40 bg-muted rounded animate-pulse" />
           ) : (
             <>
-              <p className="text-xs font-semibold text-muted-foreground tracking-widest uppercase">MRR Total Adquirido</p>
-              <p className="text-3xl font-bold text-foreground tabular-nums">
+              <p className="text-[10px] sm:text-xs font-semibold text-muted-foreground tracking-widest uppercase">MRR Total Adquirido</p>
+              <p className="text-xl sm:text-3xl font-bold text-foreground tabular-nums">
                 {d ? formatBRL(d.totalRevenue) : "—"}
               </p>
-              <p className="text-xs text-muted-foreground">soma do MRR de todas as aquisições</p>
+              <p className="text-[10px] sm:text-xs text-muted-foreground">soma do MRR de todas as aquisições</p>
             </>
           )}
         </div>
 
-        <div className="bg-card border border-card-border rounded-xl p-6 flex flex-col items-center justify-center text-center gap-2">
+        <div className="bg-card border border-card-border rounded-xl p-4 sm:p-6 flex flex-col items-center justify-center text-center gap-1 sm:gap-2">
           {isLoading ? (
             <div className="h-8 w-24 bg-muted rounded animate-pulse" />
           ) : (
             <>
-              <p className="text-xs font-semibold text-muted-foreground tracking-widest uppercase">Assinantes Pagantes</p>
-              <p className="text-3xl font-bold text-foreground tabular-nums">
+              <p className="text-[10px] sm:text-xs font-semibold text-muted-foreground tracking-widest uppercase">Assinantes Pagantes</p>
+              <p className="text-xl sm:text-3xl font-bold text-foreground tabular-nums">
                 {d ? formatNumber(d.totalSubscribers) : "—"}
               </p>
-              <p className="text-xs text-muted-foreground">assinantes ativos</p>
+              <p className="text-[10px] sm:text-xs text-muted-foreground">assinantes ativos</p>
             </>
           )}
         </div>
 
-        <div className="bg-card border border-card-border rounded-xl p-6 flex flex-col items-center justify-center text-center gap-2">
+        <div className="bg-card border border-card-border rounded-xl p-4 sm:p-6 flex flex-col items-center justify-center text-center gap-1 sm:gap-2">
           {isLoading ? (
             <div className="h-8 w-32 bg-muted rounded animate-pulse" />
           ) : (
             <>
-              <p className="text-xs font-semibold text-muted-foreground tracking-widest uppercase">Média por Assinante</p>
-              <p className="text-3xl font-bold text-foreground tabular-nums">
+              <p className="text-[10px] sm:text-xs font-semibold text-muted-foreground tracking-widest uppercase">Média por Assinante</p>
+              <p className="text-xl sm:text-3xl font-bold text-foreground tabular-nums">
                 {d ? formatBRL(d.arpu) : "—"}
               </p>
-              <p className="text-xs text-muted-foreground">receita média mensal</p>
+              <p className="text-[10px] sm:text-xs text-muted-foreground">receita média mensal</p>
             </>
           )}
         </div>
       </div>
 
       {/* ── Churn KPIs ───────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
         <KPICard title="MRR Atual" value={d ? formatBRL(d.mrr) : "—"} loading={isLoading} error={!!hasError} errorMessage={errMsg} />
         <KPICard title="ARR Projetado" value={d ? formatBRL(d.arr) : "—"} loading={isLoading} error={!!hasError} errorMessage={errMsg} />
         <KPICard title="Cancelamentos no Período" value={d ? formatNumber(totalCancellations) : "—"} loading={isLoading} error={!!hasError} errorMessage={errMsg} invertChange />

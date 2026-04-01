@@ -211,7 +211,7 @@ export default function Funnel() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
         <KPICard title="Cadastros Gratuitos" value={f ? formatNumber(f.totalRegistrations) : "—"} subtitle="com tag Free-Trial" loading={isLoading} error={!!hasError} errorMessage={errMsg} />
         <KPICard title="Conversões" value={f ? formatNumber(f.totalConversions) : "—"} subtitle="tornaram-se assinantes" loading={isLoading} error={!!hasError} errorMessage={errMsg} />
         <KPICard title="Taxa de Conversão" value={f ? formatPct(f.conversionRate) : "—"} loading={isLoading} error={!!hasError} errorMessage={errMsg} />
@@ -219,7 +219,7 @@ export default function Funnel() {
       </div>
 
       {/* Cadastros vs. Conversões (mensal) — estilo Evolução Mensal */}
-      <div className="bg-card border border-card-border rounded-xl p-5">
+      <div className="bg-card border border-card-border rounded-xl p-4 sm:p-5">
         <div className="mb-4">
           <h2 className="text-sm font-semibold text-foreground">Cadastros vs. Conversões (mensal)</h2>
           <p className="text-xs text-muted-foreground mt-0.5">Free-Trial a partir de Mar/2026</p>
@@ -265,8 +265,8 @@ export default function Funnel() {
       </div>
 
       {/* Novos Leads por Dia + Tempo até Conversão */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <div className="bg-card border border-card-border rounded-xl p-5">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 sm:gap-4">
+        <div className="bg-card border border-card-border rounded-xl p-4 sm:p-5">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-semibold text-foreground">Novos Leads</h2>
             <div className="flex gap-1">
@@ -315,7 +315,7 @@ export default function Funnel() {
           )}
         </div>
 
-        <div className="bg-card border border-card-border rounded-xl p-5">
+        <div className="bg-card border border-card-border rounded-xl p-4 sm:p-5">
           <h2 className="text-sm font-semibold text-foreground mb-4">Tempo até Conversão</h2>
           {isLoading ? <div className="h-52 bg-muted rounded animate-pulse" /> : (
             <ResponsiveContainer width="100%" height={210}>
@@ -332,7 +332,7 @@ export default function Funnel() {
       </div>
 
       {/* Taxa de Conversão por Origem UTM */}
-      <div className="bg-card border border-card-border rounded-xl p-5">
+      <div className="bg-card border border-card-border rounded-xl p-4 sm:p-5">
         <h2 className="text-sm font-semibold text-foreground mb-4">Taxa de Conversão por Origem UTM</h2>
         {leadsLoading ? (
           <div className="h-32 bg-muted rounded animate-pulse" />
@@ -377,7 +377,7 @@ export default function Funnel() {
       </div>
 
       {/* Leads por Origem UTM × Mês */}
-      <div className="bg-card border border-card-border rounded-xl p-5">
+      <div className="bg-card border border-card-border rounded-xl p-4 sm:p-5">
         <h2 className="text-sm font-semibold text-foreground mb-1">Leads por Origem UTM × Mês</h2>
         <p className="text-xs text-muted-foreground mb-4">
           Clique em uma origem para expandir por mídia (utm_medium) — exclusivo tag Free-Trial, a partir de março/2026

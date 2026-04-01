@@ -1,6 +1,7 @@
+import { useState } from "react";
 import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Sidebar } from "@/components/Sidebar";
+import { Sidebar, MobileMenuButton, MobileDrawer } from "@/components/Sidebar";
 import { GlobalPeriodSelector } from "@/components/GlobalPeriodSelector";
 import { PeriodProvider } from "@/context/PeriodContext";
 import Overview from "@/pages/Overview";
@@ -27,15 +28,21 @@ function NotFound() {
 }
 
 function Layout() {
+  const [mobileOpen, setMobileOpen] = useState(false);
+
   return (
     <div className="flex min-h-screen bg-background">
       <Sidebar />
+      <MobileDrawer open={mobileOpen} onClose={() => setMobileOpen(false)} />
       <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="sticky top-0 z-20 bg-background/95 backdrop-blur-sm border-b border-border px-6 py-2.5 flex items-center justify-between gap-4 shrink-0">
-          <span className="text-xs text-muted-foreground hidden sm:block">Período de análise</span>
-          <GlobalPeriodSelector />
+        <header className="sticky top-0 z-20 bg-background/95 backdrop-blur-sm border-b border-border px-3 sm:px-6 py-2.5 flex items-center gap-3 shrink-0">
+          <MobileMenuButton onClick={() => setMobileOpen(true)} />
+          <span className="text-xs text-muted-foreground hidden lg:block shrink-0">Período de análise</span>
+          <div className="flex-1 overflow-x-auto scrollbar-hide">
+            <GlobalPeriodSelector />
+          </div>
         </header>
-        <main className="flex-1 overflow-auto p-8">
+        <main className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
           <Switch>
             <Route path="/" component={Overview} />
             <Route path="/revenue" component={Revenue} />

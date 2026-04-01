@@ -60,7 +60,7 @@ export default function Overview() {
         <p className="text-sm text-muted-foreground">Métricas baseadas na planilha importada e webhooks em tempo real</p>
       </div>
 
-      <div className="grid grid-cols-2 xl:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
         <KPICard
           title="MRR Atual"
           value={d ? formatBRL(d.mrr) : "—"}

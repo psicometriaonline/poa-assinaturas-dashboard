@@ -52,9 +52,8 @@ export function GlobalPeriodSelector() {
   const isCustomActive = period === "custom";
 
   return (
-    <div className="flex items-center gap-1 flex-wrap">
-      {/* Quick period buttons */}
-      <div className="flex items-center gap-0.5 bg-secondary rounded-lg p-1 flex-wrap">
+    <div className="flex items-center gap-1 min-w-0">
+      <div className="flex items-center gap-0.5 bg-secondary rounded-lg p-1">
         {QUICK_OPTIONS.map((opt) => (
           <button
             key={opt}
