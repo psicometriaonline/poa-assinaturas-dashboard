@@ -39,7 +39,11 @@ export default function Revenue() {
 
   const stackedData = d?.history.map((h) => ({ month: h.month, ...h.byPlan })) ?? [];
 
-  const totalCancellations = d?.history.reduce((sum, h) => sum + h.churnedSubs, 0) ?? 0;
+  const startKey = start.slice(0, 7);
+  const endKey = end.slice(0, 7);
+  const totalCancellations = d?.history
+    .filter((h) => h.monthKey >= startKey && h.monthKey <= endKey)
+    .reduce((sum, h) => sum + h.churnedSubs, 0) ?? 0;
 
   const lastMonth = d?.history[d.history.length - 1];
   const currentChurnRate = lastMonth?.churnRate ?? 0;

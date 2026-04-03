@@ -6,7 +6,6 @@ import { getConversionMetrics, type ConversionMetrics } from "../metrics/convers
 import { getAcquisitionMetrics } from "../metrics/acquisition";
 import { getLeadsMetrics, takeLeadsSnapshot, getLeadsSnapshots } from "../metrics/leads";
 import { query } from "../lib/db";
-import { CHURN_EVENTS } from "../lib/churn-events";
 import {
   getWebsiteStats,
   getPageViews,
@@ -49,8 +48,9 @@ router.get("/overview", async (req: Request, res: Response) => {
     const cacheKey = `overview:${startDate.toISOString()}:${endDate.toISOString()}`;
     const data = await withCache(cacheKey, async () => {
       const startMs = startDate.getTime();
+      const endMs = endDate.getTime();
 
-      const [activeRow, mrrRow, newRow, cancelRow, funnelMetrics] = await Promise.all([
+      const [activeRow, mrrRow, newRow, churnMetrics, funnelMetrics] = await Promise.all([
         query<{ count: string }>(
           `SELECT COUNT(*) as count FROM hotmart_subscriptions WHERE status = 'ACTIVE'`
         ),
@@ -69,16 +69,9 @@ router.get("/overview", async (req: Request, res: Response) => {
              AND accession_date >= $1
              AND accession_date <= $2
              AND original_event IN ('IMPORT_CSV', 'PURCHASE_APPROVED', 'REACTIVATED_PURCHASE')`,
-          [startMs, endDate.getTime()]
+          [startMs, endMs]
         ),
-        query<{ count: string }>(
-          `SELECT COUNT(DISTINCT subscriber_code) as count
-           FROM hotmart_webhook_events
-           WHERE event = ANY($1::text[])
-             AND received_at >= $2
-             AND received_at <= $3`,
-          [[...CHURN_EVENTS], startDate, endDate]
-        ),
+        getChurnMetrics(startDate, endDate),
         getConversionMetrics(startDate, endDate).catch((): ConversionMetrics | null => null),
       ]);
 
@@ -86,11 +79,9 @@ router.get("/overview", async (req: Request, res: Response) => {
       const mrr = parseFloat(mrrRow[0]?.sum ?? "0");
       const arr = Math.round(mrr * 12 * 100) / 100;
       const newSubscribers = parseInt(newRow[0]?.count ?? "0", 10);
-      const cancellations = parseInt(cancelRow[0]?.count ?? "0", 10);
+      const cancellations = churnMetrics.totalCancellations;
       const netNewSubscribers = newSubscribers - cancellations;
-      const startOfMonthBase = activeSubscribers + cancellations - newSubscribers;
-      const churnDenominator = startOfMonthBase + cancellations;
-      const churnRate = churnDenominator > 0 ? parseFloat(((cancellations / churnDenominator) * 100).toFixed(2)) : 0;
+      const churnRate = churnMetrics.churnRate;
       const conversionRate = funnelMetrics?.conversionRate ?? 0;
 
       return {
