@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { fetchOverview, fetchRevenue, formatBRL, formatPct, formatNumber } from "@/lib/api";
+import { usePeriod } from "@/context/PeriodContext";
 import { KPICard } from "@/components/KPICard";
 import {
   LineChart,
@@ -14,9 +15,12 @@ import {
 const CHART_COLOR = "#3b82f6";
 
 function MrrChart() {
+  const { dateRange } = usePeriod();
+  const { start, end } = dateRange;
+
   const { data, isLoading } = useQuery({
-    queryKey: ["revenue"],
-    queryFn: () => fetchRevenue(),
+    queryKey: ["revenue", start, end],
+    queryFn: () => fetchRevenue(start, end),
   });
 
   if (isLoading) return <div className="h-56 bg-muted rounded animate-pulse" />;
@@ -24,7 +28,7 @@ function MrrChart() {
   const chartData = data?.data?.history ?? [];
 
   return (
-    <div className="bg-card border border-card-border rounded-xl p-5">
+    <div className="bg-card border border-card-border rounded-xl p-4 sm:p-5">
       <h2 className="text-sm font-semibold text-foreground mb-4">Evolução do MRR</h2>
       <ResponsiveContainer width="100%" height={200}>
         <LineChart data={chartData}>
@@ -44,9 +48,12 @@ function MrrChart() {
 }
 
 export default function Overview() {
+  const { dateRange } = usePeriod();
+  const { start, end } = dateRange;
+
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ["overview"],
-    queryFn: fetchOverview,
+    queryKey: ["overview", start, end],
+    queryFn: () => fetchOverview(start, end),
   });
 
   const d = data?.data;
@@ -88,7 +95,7 @@ export default function Overview() {
         <KPICard
           title="Novas Assinaturas"
           value={d ? formatNumber(d.newSubscribers ?? 0) : "—"}
-          subtitle="entradas brutas · este mês"
+          subtitle="entradas brutas · no período"
           loading={isLoading}
           error={!!hasError}
           errorMessage={errMsg}
@@ -96,7 +103,7 @@ export default function Overview() {
         <KPICard
           title="Cancelamentos"
           value={d ? formatNumber(d.cancellations ?? 0) : "—"}
-          subtitle="via webhook · este mês"
+          subtitle="via webhook · no período"
           loading={isLoading}
           error={!!hasError}
           errorMessage={errMsg}

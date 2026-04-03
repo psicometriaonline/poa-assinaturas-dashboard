@@ -45,12 +45,10 @@ function errorResponse(message: string) {
 
 router.get("/overview", async (req: Request, res: Response) => {
   try {
-    const cacheKey = "overview";
+    const { startDate, endDate } = parseDateRange(req);
+    const cacheKey = `overview:${startDate.toISOString()}:${endDate.toISOString()}`;
     const data = await withCache(cacheKey, async () => {
-      const now = new Date();
-      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-
-      const monthStartMs = monthStart.getTime();
+      const startMs = startDate.getTime();
 
       const [activeRow, mrrRow, newRow, cancelRow, funnelMetrics] = await Promise.all([
         query<{ count: string }>(
@@ -69,17 +67,19 @@ router.get("/overview", async (req: Request, res: Response) => {
            FROM hotmart_subscriptions
            WHERE accession_date IS NOT NULL
              AND accession_date >= $1
+             AND accession_date <= $2
              AND original_event IN ('IMPORT_CSV', 'PURCHASE_APPROVED', 'REACTIVATED_PURCHASE')`,
-          [monthStartMs]
+          [startMs, endDate.getTime()]
         ),
         query<{ count: string }>(
           `SELECT COUNT(DISTINCT subscriber_code) as count
            FROM hotmart_webhook_events
            WHERE event = ANY($1::text[])
-             AND received_at >= $2`,
-          [[...CHURN_EVENTS], monthStart]
+             AND received_at >= $2
+             AND received_at <= $3`,
+          [[...CHURN_EVENTS], startDate, endDate]
         ),
-        getConversionMetrics(monthStart, now).catch((): ConversionMetrics | null => null),
+        getConversionMetrics(startDate, endDate).catch((): ConversionMetrics | null => null),
       ]);
 
       const activeSubscribers = parseInt(activeRow[0]?.count ?? "0", 10);

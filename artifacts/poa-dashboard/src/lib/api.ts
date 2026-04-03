@@ -8,7 +8,11 @@ async function apiFetch<T>(url: string): Promise<{ error: boolean; message?: str
   return res.json();
 }
 
-export async function fetchOverview() {
+export async function fetchOverview(start?: string, end?: string) {
+  const params = new URLSearchParams();
+  if (start) params.set("start", start);
+  if (end) params.set("end", end);
+  const qs = params.toString();
   return apiFetch<{
     mrr: number;
     arr: number;
@@ -16,9 +20,10 @@ export async function fetchOverview() {
     activeSubscribers: number;
     newSubscribers: number;
     cancellations: number;
+    netNewSubscribers: number;
     churnRate: number;
     conversionRate: number;
-  }>(`${BASE}/overview`);
+  }>(`${BASE}/overview${qs ? `?${qs}` : ""}`);
 }
 
 export async function fetchWebhookStatus() {
