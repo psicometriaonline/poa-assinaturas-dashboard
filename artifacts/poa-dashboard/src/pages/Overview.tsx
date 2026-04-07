@@ -71,7 +71,7 @@ export default function Overview() {
         <KPICard
           title="MRR Atual"
           value={d ? formatBRL(d.mrr) : "—"}
-          subtitle="planilha + webhooks"
+          subtitle="receita mensal recorrente"
           loading={isLoading}
           error={!!hasError}
           errorMessage={errMsg}
@@ -85,12 +85,38 @@ export default function Overview() {
           errorMessage={errMsg}
         />
         <KPICard
+          title="Total de Assinantes"
+          value={d ? formatNumber(d.totalSubscribers ?? 0) : "—"}
+          subtitle="todos os status"
+          loading={isLoading}
+          error={!!hasError}
+          errorMessage={errMsg}
+        />
+        <KPICard
           title="Assinantes Ativos"
           value={d ? formatNumber(d.activeSubscribers ?? 0) : "—"}
           subtitle="status ativo · agora"
           loading={isLoading}
           error={!!hasError}
           errorMessage={errMsg}
+        />
+        <KPICard
+          title="Atrasados"
+          value={d ? formatNumber(d.pastDueSubscribers ?? 0) : "—"}
+          subtitle="pagamento pendente"
+          loading={isLoading}
+          error={!!hasError}
+          errorMessage={errMsg}
+          invertChange
+        />
+        <KPICard
+          title="Cancelados / Inativos"
+          value={d ? formatNumber(d.inactiveSubscribers ?? 0) : "—"}
+          subtitle="não estão mais ativos"
+          loading={isLoading}
+          error={!!hasError}
+          errorMessage={errMsg}
+          invertChange
         />
         <KPICard
           title="Novas Assinaturas"
@@ -108,14 +134,6 @@ export default function Overview() {
           error={!!hasError}
           errorMessage={errMsg}
           invertChange
-        />
-        <KPICard
-          title="Saldo de Assinaturas"
-          value={d ? (((d.netNewSubscribers ?? 0) >= 0 ? "+" : "") + formatNumber(d.netNewSubscribers ?? 0)) : "—"}
-          subtitle="adesões − cancelamentos"
-          loading={isLoading}
-          error={!!hasError}
-          errorMessage={errMsg}
         />
         <KPICard
           title="Churn Rate"

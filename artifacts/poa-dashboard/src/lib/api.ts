@@ -18,6 +18,9 @@ export async function fetchOverview(start?: string, end?: string) {
     arr: number;
     mrrChange: number | null;
     activeSubscribers: number;
+    pastDueSubscribers: number;
+    inactiveSubscribers: number;
+    totalSubscribers: number;
     newSubscribers: number;
     cancellations: number;
     netNewSubscribers: number;

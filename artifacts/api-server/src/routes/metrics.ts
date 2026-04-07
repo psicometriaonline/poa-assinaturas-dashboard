@@ -50,9 +50,9 @@ router.get("/overview", async (req: Request, res: Response) => {
       const startMs = startDate.getTime();
       const endMs = endDate.getTime();
 
-      const [activeRow, mrrRow, newRow, cancelRow, funnelMetrics] = await Promise.all([
-        query<{ count: string }>(
-          `SELECT COUNT(*) as count FROM hotmart_subscriptions WHERE status = 'ACTIVE'`
+      const [statusRows, mrrRow, newRow, cancelRow, funnelMetrics] = await Promise.all([
+        query<{ status: string; count: string }>(
+          `SELECT status, COUNT(*) as count FROM hotmart_subscriptions GROUP BY status`
         ),
         query<{ sum: string }>(
           `SELECT COALESCE(SUM(
@@ -67,8 +67,7 @@ router.get("/overview", async (req: Request, res: Response) => {
            FROM hotmart_subscriptions
            WHERE accession_date IS NOT NULL
              AND accession_date >= $1
-             AND accession_date <= $2
-             AND original_event IN ('IMPORT_CSV', 'PURCHASE_APPROVED', 'REACTIVATED_PURCHASE')`,
+             AND accession_date <= $2`,
           [startMs, endMs]
         ),
         query<{ count: string }>(
@@ -82,14 +81,24 @@ router.get("/overview", async (req: Request, res: Response) => {
         getConversionMetrics(startDate, endDate).catch((): ConversionMetrics | null => null),
       ]);
 
-      const activeSubscribers = parseInt(activeRow[0]?.count ?? "0", 10);
+      const statusMap: Record<string, number> = {};
+      for (const row of statusRows) {
+        statusMap[row.status] = parseInt(row.count, 10);
+      }
+      const activeSubscribers = statusMap["ACTIVE"] ?? 0;
+      const pastDueSubscribers = statusMap["PAST_DUE"] ?? 0;
+      const inactiveSubscribers = Object.entries(statusMap)
+        .filter(([s]) => s !== "ACTIVE" && s !== "PAST_DUE")
+        .reduce((sum, [, c]) => sum + c, 0);
+      const totalSubscribers = Object.values(statusMap).reduce((a, b) => a + b, 0);
+
       const mrr = parseFloat(mrrRow[0]?.sum ?? "0");
       const arr = Math.round(mrr * 12 * 100) / 100;
       const newSubscribers = parseInt(newRow[0]?.count ?? "0", 10);
       const cancellations = parseInt(cancelRow[0]?.count ?? "0", 10);
       const netNewSubscribers = newSubscribers - cancellations;
-      const churnRate = activeSubscribers > 0
-        ? parseFloat(((cancellations / (activeSubscribers + cancellations)) * 100).toFixed(2))
+      const churnRate = totalSubscribers > 0
+        ? parseFloat(((cancellations / totalSubscribers) * 100).toFixed(2))
         : 0;
       const conversionRate = funnelMetrics?.conversionRate ?? 0;
 
@@ -98,6 +107,9 @@ router.get("/overview", async (req: Request, res: Response) => {
         arr,
         mrrChange: null,
         activeSubscribers,
+        pastDueSubscribers,
+        inactiveSubscribers,
+        totalSubscribers,
         newSubscribers,
         cancellations,
         netNewSubscribers,
