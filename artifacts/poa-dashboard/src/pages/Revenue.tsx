@@ -76,11 +76,11 @@ export default function Revenue() {
             <div className="h-8 w-40 bg-muted rounded animate-pulse" />
           ) : (
             <>
-              <p className="text-[10px] sm:text-xs font-semibold text-muted-foreground tracking-widest uppercase">MRR Total Adquirido</p>
+              <p className="text-[10px] sm:text-xs font-semibold text-muted-foreground tracking-widest uppercase">MRR Atual</p>
               <p className="text-xl sm:text-3xl font-bold text-foreground tabular-nums">
-                {d ? formatBRL(d.totalRevenue) : "—"}
+                {d ? formatBRL(d.mrr) : "—"}
               </p>
-              <p className="text-[10px] sm:text-xs text-muted-foreground">soma do MRR de todas as aquisições</p>
+              <p className="text-[10px] sm:text-xs text-muted-foreground">receita mensal recorrente</p>
             </>
           )}
         </div>
@@ -115,8 +115,7 @@ export default function Revenue() {
       </div>
 
       {/* ── Churn KPIs ───────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
-        <KPICard title="MRR Atual" value={d ? formatBRL(d.mrr) : "—"} loading={isLoading} error={!!hasError} errorMessage={errMsg} />
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
         <KPICard title="ARR Projetado" value={d ? formatBRL(d.arr) : "—"} loading={isLoading} error={!!hasError} errorMessage={errMsg} />
         <KPICard title="Cancelamentos no Período" value={d ? formatNumber(totalCancellations) : "—"} loading={isLoading} error={!!hasError} errorMessage={errMsg} invertChange />
         <KPICard title="Churn Rate" value={d ? formatPct(currentChurnRate) : "—"} subtitle="último mês" loading={isLoading} error={!!hasError} errorMessage={errMsg} invertChange />
