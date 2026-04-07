@@ -87,7 +87,7 @@ export default function Overview() {
         <KPICard
           title="Assinantes Ativos"
           value={d ? formatNumber(d.activeSubscribers ?? 0) : "—"}
-          subtitle="planilha + webhooks"
+          subtitle="status ativo · agora"
           loading={isLoading}
           error={!!hasError}
           errorMessage={errMsg}
@@ -95,7 +95,7 @@ export default function Overview() {
         <KPICard
           title="Novas Assinaturas"
           value={d ? formatNumber(d.newSubscribers ?? 0) : "—"}
-          subtitle="entradas brutas · no período"
+          subtitle="adesões no período"
           loading={isLoading}
           error={!!hasError}
           errorMessage={errMsg}
@@ -103,7 +103,7 @@ export default function Overview() {
         <KPICard
           title="Cancelamentos"
           value={d ? formatNumber(d.cancellations ?? 0) : "—"}
-          subtitle="via webhook · no período"
+          subtitle="cancelados no período"
           loading={isLoading}
           error={!!hasError}
           errorMessage={errMsg}
@@ -112,7 +112,7 @@ export default function Overview() {
         <KPICard
           title="Saldo de Assinaturas"
           value={d ? (((d.netNewSubscribers ?? 0) >= 0 ? "+" : "") + formatNumber(d.netNewSubscribers ?? 0)) : "—"}
-          subtitle="novas − cancelamentos"
+          subtitle="adesões − cancelamentos"
           loading={isLoading}
           error={!!hasError}
           errorMessage={errMsg}

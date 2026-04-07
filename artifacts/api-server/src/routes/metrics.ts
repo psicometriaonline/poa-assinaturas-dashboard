@@ -50,7 +50,7 @@ router.get("/overview", async (req: Request, res: Response) => {
       const startMs = startDate.getTime();
       const endMs = endDate.getTime();
 
-      const [activeRow, mrrRow, newRow, churnMetrics, funnelMetrics] = await Promise.all([
+      const [activeRow, mrrRow, newRow, cancelRow, funnelMetrics] = await Promise.all([
         query<{ count: string }>(
           `SELECT COUNT(*) as count FROM hotmart_subscriptions WHERE status = 'ACTIVE'`
         ),
@@ -71,7 +71,14 @@ router.get("/overview", async (req: Request, res: Response) => {
              AND original_event IN ('IMPORT_CSV', 'PURCHASE_APPROVED', 'REACTIVATED_PURCHASE')`,
           [startMs, endMs]
         ),
-        getChurnMetrics(startDate, endDate),
+        query<{ count: string }>(
+          `SELECT COUNT(*) as count
+           FROM hotmart_subscriptions
+           WHERE cancellation_date IS NOT NULL
+             AND cancellation_date >= $1
+             AND cancellation_date <= $2`,
+          [startMs, endMs]
+        ),
         getConversionMetrics(startDate, endDate).catch((): ConversionMetrics | null => null),
       ]);
 
@@ -79,9 +86,11 @@ router.get("/overview", async (req: Request, res: Response) => {
       const mrr = parseFloat(mrrRow[0]?.sum ?? "0");
       const arr = Math.round(mrr * 12 * 100) / 100;
       const newSubscribers = parseInt(newRow[0]?.count ?? "0", 10);
-      const cancellations = churnMetrics.totalCancellations;
+      const cancellations = parseInt(cancelRow[0]?.count ?? "0", 10);
       const netNewSubscribers = newSubscribers - cancellations;
-      const churnRate = churnMetrics.churnRate;
+      const churnRate = activeSubscribers > 0
+        ? parseFloat(((cancellations / (activeSubscribers + cancellations)) * 100).toFixed(2))
+        : 0;
       const conversionRate = funnelMetrics?.conversionRate ?? 0;
 
       return {
