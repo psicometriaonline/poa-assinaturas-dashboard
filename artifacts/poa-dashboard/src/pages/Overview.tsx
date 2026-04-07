@@ -110,9 +110,9 @@ export default function Overview() {
           invertChange
         />
         <KPICard
-          title="Cancelados / Inativos"
-          value={d ? formatNumber(d.inactiveSubscribers ?? 0) : "—"}
-          subtitle="não estão mais ativos"
+          title="Cancelamentos"
+          value={d ? formatNumber(d.cancellations ?? 0) : "—"}
+          subtitle="cancelados no período"
           loading={isLoading}
           error={!!hasError}
           errorMessage={errMsg}
