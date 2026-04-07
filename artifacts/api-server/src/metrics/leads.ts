@@ -95,20 +95,10 @@ export async function getLeadsMetrics(
   const startMs = effectiveStart.getTime();
   const endMs = endDate.getTime();
 
-  const [allFreeTrialContacts, subscriberRows] = await Promise.all([
+  const [allFreeTrialContacts, alunosPoaEmails] = await Promise.all([
     getLeadContacts(FREE_TRIAL_TAG_ID),
-    query<{ subscriber_email: string }>(
-      `SELECT subscriber_email
-       FROM hotmart_subscriptions
-       WHERE subscriber_email IS NOT NULL
-         AND accession_date IS NOT NULL
-         AND original_event != 'IMPORT_CSV'`
-    ),
+    getListContactEmails(ALUNOS_POA_LIST_ID),
   ]);
-
-  const subscriberEmails = new Set(
-    subscriberRows.map((r) => r.subscriber_email.toLowerCase().trim())
-  );
 
   // Use _tagDate (when tag was assigned) as canonical date, falling back to cdate
   const contacts = allFreeTrialContacts.filter((c) => {
@@ -120,7 +110,7 @@ export async function getLeadsMetrics(
     {
       totalFreeTrial: allFreeTrialContacts.length,
       inPeriod: contacts.length,
-      subscriberCount: subscriberEmails.size,
+      alunosPoaCount: alunosPoaEmails.size,
     },
     "Leads metrics: fetched AC data"
   );
@@ -171,7 +161,7 @@ export async function getLeadsMetrics(
       (sourceMediumMonthLeads[utmSource][utmMedium][monthKey] ?? 0) + 1;
 
     const email = contact.email?.toLowerCase().trim();
-    const isConverted = email ? subscriberEmails.has(email) : false;
+    const isConverted = email ? alunosPoaEmails.has(email) : false;
 
     if (isConverted) {
       totalConversions++;

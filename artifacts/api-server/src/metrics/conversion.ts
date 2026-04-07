@@ -1,8 +1,9 @@
-import { getLeadContacts, getContactUtmField } from "../sources/activecampaign";
+import { getLeadContacts, getListContactEmails, getContactUtmField } from "../sources/activecampaign";
 import { query } from "../lib/db";
 import { logger } from "../lib/logger";
 
 const FREE_TRIAL_TAG_ID = "401";
+const ALUNOS_POA_LIST_ID = "30";
 const UTM_SOURCE_FIELD_ID = "13";
 
 export interface ConversionMetrics {
@@ -47,9 +48,9 @@ export async function getConversionMetrics(
   // Chart always begins at the launch of the trial program
   const chartStart = startDate < FUNNEL_START ? FUNNEL_START : startDate;
 
-  // Fetch free-trial contacts from AC (tag 401) and subscriber emails from local DB in parallel
-  const [leadContacts, subscriberRows] = await Promise.all([
+  const [leadContacts, alunosPoaEmails, subscriberRows] = await Promise.all([
     getLeadContacts(FREE_TRIAL_TAG_ID),
+    getListContactEmails(ALUNOS_POA_LIST_ID),
     query<{ subscriber_email: string; accession_date: string }>(
       `SELECT subscriber_email, accession_date
        FROM hotmart_subscriptions
@@ -59,14 +60,13 @@ export async function getConversionMetrics(
     ),
   ]);
 
-  logger.info({ totalLeads: leadContacts.length, totalSubscribers: subscriberRows.length }, "Conversion metrics: fetched sources");
+  logger.info({ totalLeads: leadContacts.length, alunosPoaCount: alunosPoaEmails.size }, "Conversion metrics: fetched sources");
 
-  // Build fast lookup: email → accession_date (ms)
-  const subscriberMap = new Map<string, number>();
+  const accessionMap = new Map<string, number>();
   for (const row of subscriberRows) {
     const email = row.subscriber_email.toLowerCase().trim();
     const accMs = parseInt(row.accession_date, 10);
-    if (!isNaN(accMs)) subscriberMap.set(email, accMs);
+    if (!isNaN(accMs)) accessionMap.set(email, accMs);
   }
 
   // KPI totals use ALL contacts with the tag (no date filter)
@@ -82,17 +82,19 @@ export async function getConversionMetrics(
   for (const c of allContacts) {
     const refMs = new Date(c._tagDate ?? c.cdate).getTime();
     const email = c.email?.toLowerCase().trim() ?? "";
-    const accessionMs = subscriberMap.get(email);
-    const converted = accessionMs !== undefined;
+    const converted = alunosPoaEmails.has(email);
 
     if (converted) {
       totalConversions++;
-      const days = Math.max(0, Math.floor((accessionMs! - refMs) / (1000 * 60 * 60 * 24)));
-      daysToConversion.push(days);
-      if (days <= 7) distribution["0-7"]++;
-      else if (days <= 14) distribution["8-14"]++;
-      else if (days <= 30) distribution["15-30"]++;
-      else distribution["+30"]++;
+      const accessionMs = accessionMap.get(email);
+      if (accessionMs !== undefined) {
+        const days = Math.max(0, Math.floor((accessionMs - refMs) / (1000 * 60 * 60 * 24)));
+        daysToConversion.push(days);
+        if (days <= 7) distribution["0-7"]++;
+        else if (days <= 14) distribution["8-14"]++;
+        else if (days <= 30) distribution["15-30"]++;
+        else distribution["+30"]++;
+      }
     }
 
     // UTM channel
@@ -116,7 +118,7 @@ export async function getConversionMetrics(
   for (const c of allContacts) {
     const refMs = new Date(c._tagDate ?? c.cdate).getTime();
     const email = c.email?.toLowerCase().trim() ?? "";
-    const converted = subscriberMap.has(email);
+    const converted = alunosPoaEmails.has(email);
     const refDate = new Date(refMs);
     const monthKey = `${refDate.getFullYear()}-${String(refDate.getMonth() + 1).padStart(2, "0")}`;
     const bucket = monthlyMap.get(monthKey);
