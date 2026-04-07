@@ -119,23 +119,6 @@ export default function Overview() {
           invertChange
         />
         <KPICard
-          title="Novas Assinaturas"
-          value={d ? formatNumber(d.newSubscribers ?? 0) : "—"}
-          subtitle="adesões no período"
-          loading={isLoading}
-          error={!!hasError}
-          errorMessage={errMsg}
-        />
-        <KPICard
-          title="Cancelamentos"
-          value={d ? formatNumber(d.cancellations ?? 0) : "—"}
-          subtitle="cancelados no período"
-          loading={isLoading}
-          error={!!hasError}
-          errorMessage={errMsg}
-          invertChange
-        />
-        <KPICard
           title="Churn Rate"
           value={d ? formatPct(d.churnRate ?? 0) : "—"}
           subtitle="cancelamentos / total"
