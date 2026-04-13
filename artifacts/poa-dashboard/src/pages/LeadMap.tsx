@@ -2,8 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchLeadMap, formatNumber, type LeadMapData } from "@/lib/api";
 import { KPICard } from "@/components/KPICard";
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, PieChart, Pie, Cell, Legend,
+  ResponsiveContainer, PieChart, Pie, Cell, Legend, Tooltip,
 } from "recharts";
 
 const COLORS = [
@@ -44,25 +43,42 @@ function YesNoChart({ title, data }: { title: string; data: { sim: number; nao: 
 
 function HorizontalBarSection({ title, data, max = 15 }: { title: string; data: Array<{ label: string; value: number }>; max?: number }) {
   const sliced = data.slice(0, max);
+  const total = data.reduce((s, d) => s + d.value, 0);
+
   return (
     <div className="bg-card border border-card-border rounded-xl p-4 sm:p-5">
       <h2 className="text-sm font-semibold text-foreground mb-4">{title}</h2>
-      <ResponsiveContainer width="100%" height={sliced.length * 36 + 20}>
-        <BarChart data={sliced} layout="vertical" margin={{ top: 0, right: 16, left: 0, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" horizontal={false} />
-          <XAxis type="number" tick={{ fill: "#94a3b8", fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
-          <YAxis
-            type="category"
-            dataKey="label"
-            tick={{ fill: "#94a3b8", fontSize: 11 }}
-            width={180}
-            axisLine={false}
-            tickLine={false}
-          />
-          <Tooltip contentStyle={TOOLTIP_STYLE} />
-          <Bar dataKey="value" name="Membros" fill="#3b82f6" radius={[0, 4, 4, 0]} maxBarSize={24} />
-        </BarChart>
-      </ResponsiveContainer>
+      <div className="space-y-2">
+        {sliced.map((item) => {
+          const pct = total > 0 ? ((item.value / total) * 100) : 0;
+          const maxVal = sliced[0]?.value ?? 1;
+          const barWidth = (item.value / maxVal) * 100;
+          return (
+            <div key={item.label} className="group">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <span className="text-xs text-muted-foreground w-[140px] sm:w-[180px] truncate shrink-0" title={item.label}>
+                  {item.label}
+                </span>
+                <div className="flex-1 h-5 bg-sidebar rounded overflow-hidden relative min-w-0">
+                  <div
+                    className="h-full rounded bg-primary transition-all"
+                    style={{ width: `${barWidth}%` }}
+                  />
+                  <span className="absolute inset-y-0 left-2 flex items-center text-[10px] font-semibold text-white sm:hidden">
+                    {pct.toFixed(1)}%
+                  </span>
+                </div>
+                <span className="text-xs tabular-nums text-foreground w-10 text-right shrink-0">
+                  {formatNumber(item.value)}
+                </span>
+                <span className="hidden sm:inline text-xs tabular-nums text-muted-foreground w-14 text-right shrink-0">
+                  {pct.toFixed(1)}%
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
