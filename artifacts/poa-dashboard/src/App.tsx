@@ -8,6 +8,7 @@ import Overview from "@/pages/Overview";
 import Revenue from "@/pages/Revenue";
 import Funnel from "@/pages/Funnel";
 import Traffic from "@/pages/Traffic";
+import LeadMap from "@/pages/LeadMap";
 import Admin from "@/pages/Admin";
 
 const queryClient = new QueryClient({
@@ -48,6 +49,7 @@ function Layout() {
             <Route path="/revenue" component={Revenue} />
             <Route path="/funnel" component={Funnel} />
             <Route path="/traffic" component={Traffic} />
+            <Route path="/leadmap" component={LeadMap} />
             <Route path="/admin" component={Admin} />
             <Route component={NotFound} />
           </Switch>

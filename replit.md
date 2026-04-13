@@ -39,6 +39,7 @@ artifacts/
 | Hotmart         | `src/sources/hotmart.ts`         | ACTIVE/DELAYED/INACTIVE ✓ · CANCELLED retorna 400 (tratado como []) |
 | ActiveCampaign  | `src/sources/activecampaign.ts`  | ✓ Funcionando                                             |
 | Umami Cloud     | `src/sources/umami.ts`           | ✓ API conectada — dados dependem de tracking no site      |
+| Google Sheets   | `src/sources/googlesheets.ts`    | ✓ Planilha de membros via Replit Connectors SDK            |
 
 ### Endpoints
 
@@ -48,6 +49,7 @@ artifacts/
 - `GET /api/metrics/funnel?start=&end=` — Funil de conversão
 - `GET /api/metrics/acquisition?start=&end=` — Aquisição de clientes
 - `GET /api/metrics/traffic?start=&end=` — Tráfego web (Umami)
+- `GET /api/metrics/leadmap` — Perfil demográfico/acadêmico dos membros (Google Sheets + cache 30min)
 - `POST /api/webhooks/hotmart` — Recebe eventos de assinatura do Hotmart (nova, cancelada, renovação, etc.)
 - `GET /api/webhooks/hotmart/status` — Status dos eventos recebidos + contagem de assinantes no banco
 

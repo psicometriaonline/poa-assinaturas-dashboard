@@ -4,6 +4,7 @@ import { getRevenueMetrics } from "../metrics/revenue";
 import { getChurnMetrics } from "../metrics/churn";
 import { getConversionMetrics, type ConversionMetrics } from "../metrics/conversion";
 import { getAcquisitionMetrics } from "../metrics/acquisition";
+import { getLeadMapMetrics } from "../metrics/leadmap";
 import { getLeadsMetrics, takeLeadsSnapshot, getLeadsSnapshots } from "../metrics/leads";
 import { query } from "../lib/db";
 import {
@@ -169,6 +170,16 @@ router.get("/acquisition", async (req: Request, res: Response) => {
   } catch (err) {
     req.log.error({ err }, "Error fetching acquisition");
     res.status(500).json(errorResponse(err instanceof Error ? err.message : "Erro ao buscar aquisição"));
+  }
+});
+
+router.get("/leadmap", async (_req: Request, res: Response) => {
+  try {
+    const data = await withCache("leadmap", () => getLeadMapMetrics(), 30 * 60 * 1000);
+    res.json({ error: false, data });
+  } catch (err) {
+    _req.log.error({ err }, "Error fetching lead map");
+    res.status(500).json(errorResponse(err instanceof Error ? err.message : "Erro ao buscar mapa do lead"));
   }
 });
 

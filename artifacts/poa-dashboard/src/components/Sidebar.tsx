@@ -1,12 +1,13 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, TrendingUp, Funnel, Globe, Settings, Menu, X } from "lucide-react";
+import { LayoutDashboard, TrendingUp, Funnel, Globe, Users, Settings, Menu, X } from "lucide-react";
 
 const navItems = [
   { label: "Visão Geral", href: "/", icon: LayoutDashboard },
   { label: "Receita & Churn", href: "/revenue", icon: TrendingUp },
   { label: "Funil", href: "/funnel", icon: Funnel },
   { label: "Tráfego", href: "/traffic", icon: Globe },
+  { label: "Mapa do Lead", href: "/leadmap", icon: Users },
 ];
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {

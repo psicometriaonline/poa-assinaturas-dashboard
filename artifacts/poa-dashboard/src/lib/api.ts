@@ -179,6 +179,24 @@ export async function triggerLeadsSnapshot(adminSecret: string) {
   return res.json();
 }
 
+export interface LeadMapData {
+  totalWithProfile: number;
+  totalMembers: number;
+  escolaridade: Array<{ label: string; value: number }>;
+  area: Array<{ label: string; value: number }>;
+  curso: Array<{ label: string; value: number }>;
+  pesquisador: { sim: number; nao: number };
+  professor: { sim: number; nao: number };
+  coordPesquisa: { sim: number; nao: number };
+  coordPPG: { sim: number; nao: number };
+  sexo: Array<{ label: string; value: number }>;
+  topInstituicoes: Array<{ label: string; value: number }>;
+}
+
+export async function fetchLeadMap() {
+  return apiFetch<LeadMapData>(`${BASE}/leadmap`);
+}
+
 export function formatBRL(value: number): string {
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",
