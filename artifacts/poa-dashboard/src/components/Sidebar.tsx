@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, TrendingUp, Funnel, Globe, Users, Settings, Menu, X } from "lucide-react";
+import { LayoutDashboard, TrendingUp, Funnel, Globe, Users, Menu, X } from "lucide-react";
 
 const navItems = [
   { label: "Visão Geral", href: "/", icon: LayoutDashboard },
@@ -40,20 +40,6 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           );
         })}
       </nav>
-      <div className="px-3 pb-4 border-t border-sidebar-border pt-3">
-        <Link
-          href="/admin"
-          onClick={onNavigate}
-          className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-            location === "/admin"
-              ? "bg-primary text-primary-foreground"
-              : "text-muted-foreground hover:text-foreground hover:bg-sidebar-accent"
-          }`}
-        >
-          <Settings className="w-4 h-4 shrink-0" />
-          Admin
-        </Link>
-      </div>
     </>
   );
 }

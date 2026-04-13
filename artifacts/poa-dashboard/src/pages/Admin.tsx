@@ -1,6 +1,15 @@
 import { useState, useRef } from "react";
-import { Upload, CheckCircle, AlertCircle, Loader2, ShieldCheck } from "lucide-react";
+import { Upload, CheckCircle, AlertCircle, Loader2, ShieldCheck, LogOut, Mail } from "lucide-react";
 import { formatBRL, formatNumber } from "@/lib/api";
+
+const ALLOWED_EMAILS = [
+  "brunodamasio@psicometriaonline.com.br",
+  "bf.damasio@gmail.com",
+  "wellingtonfield@gmail.com",
+  "wellington.trd@outlook.com",
+];
+
+const STORAGE_KEY = "poa_admin_email";
 
 interface ImportResult {
   inserted: number;
@@ -11,13 +20,83 @@ interface ImportResult {
   byProduct: Record<string, number>;
 }
 
+function EmailGate({ onAccess }: { onAccess: (email: string) => void }) {
+  const [email, setEmail] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const normalized = email.trim().toLowerCase();
+    if (ALLOWED_EMAILS.map((e) => e.toLowerCase()).includes(normalized)) {
+      localStorage.setItem(STORAGE_KEY, email.trim());
+      onAccess(email.trim());
+    } else {
+      setError("E-mail não autorizado.");
+    }
+  }
+
+  return (
+    <div className="min-h-[60vh] flex items-center justify-center">
+      <div className="w-full max-w-sm space-y-6">
+        <div className="text-center space-y-1">
+          <ShieldCheck className="w-10 h-10 text-primary mx-auto" />
+          <h1 className="text-lg font-bold text-foreground">Área Restrita</h1>
+          <p className="text-sm text-muted-foreground">Informe seu e-mail para continuar</p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="bg-card border border-card-border rounded-xl p-6 space-y-4">
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground flex items-center gap-1.5">
+              <Mail className="w-3.5 h-3.5" />
+              E-mail
+            </label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => { setEmail(e.target.value); setError(null); }}
+              placeholder="seu@email.com"
+              autoFocus
+              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+          </div>
+
+          {error && (
+            <div className="flex items-center gap-2 text-xs text-red-400">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            className="w-full bg-primary text-primary-foreground rounded-lg py-2.5 text-sm font-semibold hover:bg-primary/90 transition-colors"
+          >
+            Entrar
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function Admin() {
+  const savedEmail = localStorage.getItem(STORAGE_KEY) ?? "";
+  const isAllowed = ALLOWED_EMAILS.map((e) => e.toLowerCase()).includes(savedEmail.toLowerCase());
+
+  const [authorizedEmail, setAuthorizedEmail] = useState<string>(isAllowed ? savedEmail : "");
   const [token, setToken] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  function handleLogout() {
+    localStorage.removeItem(STORAGE_KEY);
+    setAuthorizedEmail("");
+    setResult(null);
+    setError(null);
+  }
 
   async function handleImport() {
     if (!file || !token) return;
@@ -47,11 +126,24 @@ export default function Admin() {
     }
   }
 
+  if (!authorizedEmail) {
+    return <EmailGate onAccess={setAuthorizedEmail} />;
+  }
+
   return (
     <div className="space-y-6 max-w-2xl">
-      <div>
-        <h1 className="text-xl font-bold text-foreground">Administração</h1>
-        <p className="text-sm text-muted-foreground">Importação de assinantes via planilha Excel do Hotmart</p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-foreground">Administração</h1>
+          <p className="text-sm text-muted-foreground">Importação de assinantes via planilha Excel do Hotmart</p>
+        </div>
+        <button
+          onClick={handleLogout}
+          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-3 py-1.5 rounded-lg hover:bg-sidebar-accent"
+        >
+          <LogOut className="w-3.5 h-3.5" />
+          Sair ({authorizedEmail})
+        </button>
       </div>
 
       <div className="bg-card border border-card-border rounded-xl p-6 space-y-5">
