@@ -16,9 +16,18 @@ export interface LeadMapMetrics {
   topInstituicoes: Array<{ label: string; value: number }>;
 }
 
-function countBy(items: string[]): Array<{ label: string; value: number }> {
+function titleCase(s: string): string {
+  return s
+    .trim()
+    .toLowerCase()
+    .replace(/(?:^|\s)\S/g, (c) => c.toUpperCase());
+}
+
+function countBy(items: string[], normalize?: (s: string) => string): Array<{ label: string; value: number }> {
   const map: Record<string, number> = {};
-  for (const item of items) {
+  for (const raw of items) {
+    if (!raw) continue;
+    const item = normalize ? normalize(raw) : raw;
     if (!item) continue;
     map[item] = (map[item] ?? 0) + 1;
   }
@@ -56,7 +65,7 @@ export async function getLeadMapMetrics(): Promise<LeadMapMetrics> {
 
   const escolaridade = countBy(members.map((m) => m.escolaridade));
   const area = countBy(members.map((m) => m.area_atuacao));
-  const curso = countBy(members.map((m) => m.curso).filter(Boolean));
+  const curso = countBy(members.map((m) => m.curso).filter(Boolean), titleCase);
   const pesquisador = countYesNo(members.map((m) => m.pesquisador));
   const professor = countYesNo(members.map((m) => m.professor_universitario));
   const coordPesquisa = countYesNo(members.map((m) => m.coord_pesquisa));
