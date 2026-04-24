@@ -478,48 +478,38 @@ export default function Funnel() {
         </div>
       </div>
 
-      {/* Stacked bar chart: monthly conversion by plan */}
+      {/* Bar chart: total conversions by plan */}
       <div className="bg-card border border-card-border rounded-xl p-4 sm:p-5">
-        <h2 className="text-sm font-semibold text-foreground mb-1">Conversões por Plano — Evolução Mensal</h2>
-        <p className="text-xs text-muted-foreground mb-4">Converts do Free Trial por plano, agrupados por mês de adesão</p>
+        <h2 className="text-sm font-semibold text-foreground mb-1">Conversões por Plano</h2>
+        <p className="text-xs text-muted-foreground mb-4">Total de converts do Free Trial por plano</p>
         {planLoading ? (
           <div className="h-64 bg-muted rounded animate-pulse" />
-        ) : !pa || pa.history.length === 0 ? (
+        ) : !pa || pa.byPlan.length === 0 ? (
           <div className="h-64 flex items-center justify-center text-muted-foreground text-sm">Sem dados para o período</div>
         ) : (() => {
-          const allSeries = [...pa.topPlans, "Outros"].filter((planName) =>
-            pa.history.some((h) => (h.plans[planName] ?? 0) > 0)
-          );
-          const chartData = pa.history.map((h) => {
-            const row: Record<string, string | number> = { month: h.month };
-            for (const s of allSeries) row[s] = h.plans[s] ?? 0;
-            return row;
-          });
+          const totals: Record<string, number> = {};
+          for (const row of pa.byPlan) {
+            totals[row.plan] = (totals[row.plan] ?? 0) + row.count;
+          }
+          const chartData = Object.entries(totals)
+            .sort((a, b) => b[1] - a[1])
+            .map(([plan, count], i) => ({ plan: plan.length > 28 ? plan.slice(0, 28) + "…" : plan, count, color: PLAN_COLORS[i % PLAN_COLORS.length] }));
           return (
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 4 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                <XAxis dataKey="month" tick={{ fill: "#94a3b8", fontSize: 11 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: "#94a3b8", fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
+            <ResponsiveContainer width="100%" height={Math.max(220, chartData.length * 52)}>
+              <BarChart data={chartData} layout="vertical" margin={{ top: 4, right: 24, left: 8, bottom: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" horizontal={false} />
+                <XAxis type="number" tick={{ fill: "#94a3b8", fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
+                <YAxis type="category" dataKey="plan" width={180} tick={{ fill: "#94a3b8", fontSize: 11 }} axisLine={false} tickLine={false} />
                 <Tooltip
                   contentStyle={TOOLTIP_STYLE}
                   cursor={{ fill: "rgba(255,255,255,0.04)" }}
-                  formatter={(value: number, name: string) => [formatNumber(value), name]}
+                  formatter={(value: number) => [formatNumber(value), "Conversões"]}
                 />
-                <Legend
-                  wrapperStyle={{ fontSize: 11, color: "#94a3b8", paddingTop: 12 }}
-                  formatter={(value: string) => value.length > 24 ? value.slice(0, 24) + "…" : value}
-                />
-                {allSeries.map((planName, i) => (
-                  <Bar
-                    key={planName}
-                    dataKey={planName}
-                    stackId="plans"
-                    fill={PLAN_COLORS[i % PLAN_COLORS.length]}
-                    maxBarSize={64}
-                    radius={i === allSeries.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
-                  />
-                ))}
+                <Bar dataKey="count" maxBarSize={32} radius={[0, 4, 4, 0]}>
+                  {chartData.map((entry, i) => (
+                    <Cell key={entry.plan} fill={PLAN_COLORS[i % PLAN_COLORS.length]} />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           );
