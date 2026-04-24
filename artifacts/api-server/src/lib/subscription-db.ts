@@ -48,10 +48,13 @@ export async function upsertSubscriptionFromWebhook(
   const sub = data.subscription;
   // SUBSCRIPTION_CANCELLATION: subscriber at data.subscriber.code
   // PURCHASE_*: subscriber at data.subscription.subscriber.code
+  // Some PURCHASE_APPROVED payloads (e.g. Free Trial first payment) may omit data.subscription
+  // entirely — fall back to data.subscriber.code in that case.
   const subscriberCode = sub?.subscriber?.code ?? data.subscriber?.code;
 
   if (!subscriberCode) {
-    logger.warn({ event }, "Webhook missing subscriber code, skipping upsert");
+    // Log event type and top-level keys only — avoid logging payload body which may contain PII
+    logger.warn({ event, payloadKeys: Object.keys(payload?.data ?? {}) }, "Webhook missing subscriber code, skipping upsert");
     return;
   }
 
@@ -59,8 +62,10 @@ export async function upsertSubscriptionFromWebhook(
   const productName = data.product?.name ?? null;
   const planId = sub?.plan?.id ?? null;
   const planName = sub?.plan?.name ?? null;
+  // buyer is present on PURCHASE_* events; subscriber is present on SUBSCRIPTION_CANCELLATION
   const buyerName = data.buyer?.name ?? data.subscriber?.name ?? null;
   const buyerEmail = data.buyer?.email ?? data.subscriber?.email ?? null;
+  // approved_date is in ms on PURCHASE_APPROVED; creation_date is the webhook timestamp fallback
   const purchaseDate = data.purchase?.approved_date ?? payload.creation_date ?? null;
   const priceValue = data.purchase?.price?.value ?? data.actual_recurrence_value ?? null;
   const priceCurrency = data.purchase?.price?.currency_code ?? null;
