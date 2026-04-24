@@ -1,8 +1,9 @@
 import { query } from "../lib/db";
-import { getListContactEmails } from "../sources/activecampaign";
+import { getListContactEmails, getTagContactEmails } from "../sources/activecampaign";
 import { logger } from "../lib/logger";
 
 const ALUNOS_POA_LIST_ID = "30";
+const FREE_TRIAL_TAG_ID = "401";
 
 export interface PlanAcquisitionMetrics {
   byPlan: Array<{ plan: string; interval: string; count: number }>;
@@ -32,10 +33,26 @@ export async function getPlanAcquisitionMetrics(
   startMs: number,
   endMs: number
 ): Promise<PlanAcquisitionMetrics> {
-  const alunosPoaEmails = await getListContactEmails(ALUNOS_POA_LIST_ID);
-  const emailsArray = Array.from(alunosPoaEmails);
+  const [alunosPoaEmails, freeTrialEmails] = await Promise.all([
+    getListContactEmails(ALUNOS_POA_LIST_ID),
+    getTagContactEmails(FREE_TRIAL_TAG_ID),
+  ]);
 
-  logger.info({ alunosPoaEmails: alunosPoaEmails.size }, "Plan acquisition: Alunos POA email count");
+  // Intersection: contacts who are both in list-30 (Alunos POA) AND have tag-401 (Free Trial)
+  const intersectionEmails = Array.from(alunosPoaEmails).filter((email) =>
+    freeTrialEmails.has(email)
+  );
+
+  logger.info(
+    {
+      alunosPoaCount: alunosPoaEmails.size,
+      freeTrialCount: freeTrialEmails.size,
+      intersectionCount: intersectionEmails.length,
+    },
+    "Plan acquisition: Free Trial converts (tag-401 ∩ list-30)"
+  );
+
+  const emailsArray = intersectionEmails;
 
   if (emailsArray.length === 0) {
     return { byPlan: [], byInterval: [], history: [], topPlans: [], totalConversions: 0 };

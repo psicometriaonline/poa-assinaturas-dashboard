@@ -264,6 +264,42 @@ export async function getListContactEmails(listId: string): Promise<Set<string>>
 }
 
 /**
+ * Fetch all contact emails with a given tag ID.
+ * Returns a Set of lowercase-trimmed emails for fast intersection with list emails.
+ */
+export async function getTagContactEmails(tagId: string): Promise<Set<string>> {
+  try {
+    const emails = new Set<string>();
+    let offset = 0;
+    const limit = 100;
+
+    while (true) {
+      const data = (await acFetch("/contacts", {
+        tagid: tagId,
+        limit: limit.toString(),
+        offset: offset.toString(),
+      })) as {
+        contacts?: ACContact[];
+        meta?: { total?: string };
+      };
+
+      const contacts = data.contacts ?? [];
+      for (const c of contacts) {
+        if (c.email) emails.add(c.email.toLowerCase().trim());
+      }
+
+      if (contacts.length < limit) break;
+      offset += limit;
+    }
+
+    return emails;
+  } catch (err) {
+    logger.error({ err }, "Error fetching AC tag contact emails");
+    throw err;
+  }
+}
+
+/**
  * Get total count of contacts with a tag (no pagination, just meta.total).
  */
 export async function getTagContactCount(tagId: string): Promise<number> {

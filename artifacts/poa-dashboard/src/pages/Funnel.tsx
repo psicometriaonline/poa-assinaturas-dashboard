@@ -340,12 +340,12 @@ export default function Funnel() {
         </div>
       </div>
 
-      {/* Planos Adquiridos — Alunos POA */}
+      {/* Planos Adquiridos — Conversões Free Trial */}
       <div>
-        <h2 className="text-base font-semibold text-foreground mb-1">Planos Adquiridos — Alunos POA</h2>
+        <h2 className="text-base font-semibold text-foreground mb-1">Planos Adquiridos — Conversões Free Trial</h2>
         <p className="text-xs text-muted-foreground mb-3">
-          Distribuição de planos dos assinantes ativos (Alunos POA)
-          {pa ? ` · ${pa.totalConversions} assinaturas no período` : ""}
+          Distribuição de planos escolhidos pelos converts do Free Trial (tag 401 ∩ lista 30)
+          {pa ? ` · ${pa.totalConversions} conversões no período` : ""}
         </p>
       </div>
 
@@ -425,7 +425,7 @@ export default function Funnel() {
       {/* Stacked bar chart: monthly conversion by plan */}
       <div className="bg-card border border-card-border rounded-xl p-4 sm:p-5">
         <h2 className="text-sm font-semibold text-foreground mb-1">Conversões por Plano — Evolução Mensal</h2>
-        <p className="text-xs text-muted-foreground mb-4">Assinantes Alunos POA por plano, agrupados por mês de adesão</p>
+        <p className="text-xs text-muted-foreground mb-4">Converts do Free Trial por plano, agrupados por mês de adesão</p>
         {planLoading ? (
           <div className="h-64 bg-muted rounded animate-pulse" />
         ) : !pa || pa.history.length === 0 ? (
