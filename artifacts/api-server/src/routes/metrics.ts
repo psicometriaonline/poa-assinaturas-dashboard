@@ -5,6 +5,7 @@ import { getChurnMetrics } from "../metrics/churn";
 import { getConversionMetrics, type ConversionMetrics } from "../metrics/conversion";
 import { getAcquisitionMetrics } from "../metrics/acquisition";
 import { getLeadMapMetrics } from "../metrics/leadmap";
+import { getPlanAcquisitionMetrics } from "../metrics/plan-acquisition";
 import { getLeadsMetrics, takeLeadsSnapshot, getLeadsSnapshots } from "../metrics/leads";
 import { query } from "../lib/db";
 import {
@@ -158,6 +159,20 @@ router.get("/funnel", async (req: Request, res: Response) => {
   } catch (err) {
     req.log.error({ err }, "Error fetching funnel");
     res.status(500).json(errorResponse(err instanceof Error ? err.message : "Erro ao buscar funil"));
+  }
+});
+
+router.get("/plan-acquisition", async (req: Request, res: Response) => {
+  const { startDate, endDate } = parseDateRange(req);
+  const cacheKey = `plan-acquisition:${startDate.toISOString()}:${endDate.toISOString()}`;
+  try {
+    const data = await withCache(cacheKey, () =>
+      getPlanAcquisitionMetrics(startDate.getTime(), endDate.getTime())
+    );
+    res.json({ error: false, data });
+  } catch (err) {
+    req.log.error({ err }, "Error fetching plan acquisition");
+    res.status(500).json(errorResponse(err instanceof Error ? err.message : "Erro ao buscar aquisição por plano"));
   }
 });
 

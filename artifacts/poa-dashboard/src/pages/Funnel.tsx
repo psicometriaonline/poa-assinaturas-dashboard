@@ -1,16 +1,20 @@
 import { Fragment, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { fetchFunnel, fetchLeads, formatNumber, formatPct } from "@/lib/api";
+import { fetchFunnel, fetchLeads, fetchPlanAcquisition, formatNumber, formatPct } from "@/lib/api";
 import { KPICard } from "@/components/KPICard";
 import { usePeriod } from "@/context/PeriodContext";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, LabelList,
+  LineChart, Line,
+  PieChart, Pie, Cell,
 } from "recharts";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
 const COLOR_LEADS = "#3b82f6";
 const COLOR_CONV = "#22c55e";
+const PLAN_COLORS = ["#3b82f6", "#8b5cf6", "#22c55e", "#f59e0b", "#ef4444", "#06b6d4"];
+const INTERVAL_COLORS = ["#3b82f6", "#8b5cf6", "#22c55e"];
 const TOOLTIP_STYLE = {
   backgroundColor: "#1e293b",
   border: "1px solid #334155",
@@ -149,6 +153,12 @@ export default function Funnel() {
     queryKey: ["leads", start, end],
     queryFn: () => fetchLeads(start, end),
   });
+
+  const { data: planResp, isLoading: planLoading } = useQuery({
+    queryKey: ["plan-acquisition", start, end],
+    queryFn: () => fetchPlanAcquisition(start, end),
+  });
+  const pa = planResp?.data ?? null;
 
   const f = funnelResp?.data;
   const l = leadsResp?.data ?? null;
@@ -329,6 +339,136 @@ export default function Funnel() {
             </ResponsiveContainer>
           )}
         </div>
+      </div>
+
+      {/* Planos Adquiridos */}
+      <div>
+        <h2 className="text-base font-semibold text-foreground mb-1">Planos Adquiridos</h2>
+        <p className="text-xs text-muted-foreground mb-3">Distribuição e evolução das aquisições por plano e periodicidade</p>
+      </div>
+
+      {/* Pie charts: by plan + by interval */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 sm:gap-4">
+        <div className="bg-card border border-card-border rounded-xl p-4 sm:p-5">
+          <h2 className="text-sm font-semibold text-foreground mb-4">Distribuição por Plano</h2>
+          {planLoading ? (
+            <div className="h-64 bg-muted rounded animate-pulse" />
+          ) : !pa || pa.byPlan.length === 0 ? (
+            <div className="h-64 flex items-center justify-center text-muted-foreground text-sm">Sem dados para o período</div>
+          ) : (
+            <div className="flex flex-col sm:flex-row items-center gap-4">
+              <ResponsiveContainer width="100%" height={220}>
+                <PieChart>
+                  <Pie
+                    data={pa.byPlan.map((p) => ({ name: p.plan, value: p.count }))}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={55}
+                    outerRadius={90}
+                    paddingAngle={2}
+                    dataKey="value"
+                  >
+                    {pa.byPlan.map((_, i) => (
+                      <Cell key={i} fill={PLAN_COLORS[i % PLAN_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={TOOLTIP_STYLE}
+                    formatter={(value: number, name: string) => [formatNumber(value), name]}
+                  />
+                  <Legend
+                    wrapperStyle={{ fontSize: 11, color: "#94a3b8" }}
+                    formatter={(value: string) => value.length > 22 ? value.slice(0, 22) + "…" : value}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+
+        <div className="bg-card border border-card-border rounded-xl p-4 sm:p-5">
+          <h2 className="text-sm font-semibold text-foreground mb-4">Distribuição por Periodicidade</h2>
+          {planLoading ? (
+            <div className="h-64 bg-muted rounded animate-pulse" />
+          ) : !pa || pa.byInterval.length === 0 ? (
+            <div className="h-64 flex items-center justify-center text-muted-foreground text-sm">Sem dados para o período</div>
+          ) : (
+            <div className="flex flex-col items-center gap-4">
+              <ResponsiveContainer width="100%" height={220}>
+                <PieChart>
+                  <Pie
+                    data={pa.byInterval}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={55}
+                    outerRadius={90}
+                    paddingAngle={2}
+                    dataKey="count"
+                    nameKey="label"
+                    label={({ label, percent }) => `${label} ${(percent * 100).toFixed(0)}%`}
+                    labelLine={false}
+                  >
+                    {pa.byInterval.map((_, i) => (
+                      <Cell key={i} fill={INTERVAL_COLORS[i % INTERVAL_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={TOOLTIP_STYLE}
+                    formatter={(value: number, name: string) => [formatNumber(value), name]}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8" }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Line chart: monthly acquisition by plan */}
+      <div className="bg-card border border-card-border rounded-xl p-4 sm:p-5">
+        <h2 className="text-sm font-semibold text-foreground mb-1">Aquisições por Plano — Evolução Mensal</h2>
+        <p className="text-xs text-muted-foreground mb-4">Top {pa?.topPlans.length ?? 5} planos + agrupamento "Outros"</p>
+        {planLoading ? (
+          <div className="h-64 bg-muted rounded animate-pulse" />
+        ) : !pa || pa.history.length === 0 ? (
+          <div className="h-64 flex items-center justify-center text-muted-foreground text-sm">Sem dados para o período</div>
+        ) : (() => {
+          const allSeries = [...pa.topPlans, "Outros"].filter((planName) =>
+            pa.history.some((h) => (h.plans[planName] ?? 0) > 0)
+          );
+          const chartData = pa.history.map((h) => {
+            const row: Record<string, string | number> = { month: h.month };
+            for (const s of allSeries) row[s] = h.plans[s] ?? 0;
+            return row;
+          });
+          return (
+            <ResponsiveContainer width="100%" height={280}>
+              <LineChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                <XAxis dataKey="month" tick={{ fill: "#94a3b8", fontSize: 11 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: "#94a3b8", fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
+                <Tooltip
+                  contentStyle={TOOLTIP_STYLE}
+                  formatter={(value: number, name: string) => [formatNumber(value), name]}
+                />
+                <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8", paddingTop: 12 }}
+                  formatter={(value: string) => value.length > 24 ? value.slice(0, 24) + "…" : value}
+                />
+                {allSeries.map((planName, i) => (
+                  <Line
+                    key={planName}
+                    type="monotone"
+                    dataKey={planName}
+                    stroke={PLAN_COLORS[i % PLAN_COLORS.length]}
+                    strokeWidth={2}
+                    dot={false}
+                    activeDot={{ r: 4 }}
+                  />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
+          );
+        })()}
       </div>
 
       {/* Taxa de Conversão por Origem UTM */}

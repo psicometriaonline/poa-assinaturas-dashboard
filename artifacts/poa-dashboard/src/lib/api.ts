@@ -85,6 +85,17 @@ export async function fetchFunnel(start: string, end: string) {
   }>(`${BASE}/funnel?start=${start}&end=${end}`);
 }
 
+export interface PlanAcquisitionData {
+  byPlan: Array<{ plan: string; interval: string; count: number }>;
+  byInterval: Array<{ label: string; count: number }>;
+  history: Array<{ month: string; plans: Record<string, number> }>;
+  topPlans: string[];
+}
+
+export async function fetchPlanAcquisition(start: string, end: string) {
+  return apiFetch<PlanAcquisitionData>(`${BASE}/plan-acquisition?start=${start}&end=${end}`);
+}
+
 export async function fetchAcquisition(start: string, end: string) {
   return apiFetch<{
     byUtmSource: Array<{ source: string; registrations: number }>;
