@@ -10,6 +10,7 @@ import { logger } from "../lib/logger";
 
 const FREE_TRIAL_TAG_ID = "401";
 const ALUNOS_POA_LIST_ID = "30";
+const UTM_CONTENT_FIELD_ID = "12";
 const UTM_SOURCE_FIELD_ID = "13";
 const UTM_MEDIUM_FIELD_ID = "14";
 
@@ -18,7 +19,12 @@ export interface LeadsBySourceRow {
   leads: number;
   conversions: number;
   rate: number;
-  mediums: Array<{ medium: string; leads: number; conversions: number }>;
+  mediums: Array<{
+    medium: string;
+    leads: number;
+    conversions: number;
+    contents: Array<{ content: string; leads: number; conversions: number }>;
+  }>;
 }
 
 export interface LeadsMetrics {
@@ -44,6 +50,11 @@ export interface LeadsMetrics {
       medium: string;
       total: number;
       byMonth: Record<string, number>;
+      contents: Array<{
+        content: string;
+        total: number;
+        byMonth: Record<string, number>;
+      }>;
     }>;
   }>;
 }
@@ -125,11 +136,17 @@ export async function getLeadsMetrics(
   const sourceConversions: Record<string, number> = {};
   const sourceMediumLeads: Record<string, Record<string, number>> = {};
   const sourceMediumConversions: Record<string, Record<string, number>> = {};
+  const sourceMediumContentLeads: Record<string, Record<string, Record<string, number>>> = {};
+  const sourceMediumContentConversions: Record<string, Record<string, Record<string, number>>> = {};
 
   const sourceMonthLeads: Record<string, Record<string, number>> = {};
   const sourceMediumMonthLeads: Record<
     string,
     Record<string, Record<string, number>>
+  > = {};
+  const sourceMediumContentMonthLeads: Record<
+    string,
+    Record<string, Record<string, Record<string, number>>>
   > = {};
 
   for (const contact of contacts) {
@@ -140,14 +157,22 @@ export async function getLeadsMetrics(
       getContactUtmField(contact, UTM_SOURCE_FIELD_ID) || "(direto)";
     const utmMedium =
       getContactUtmField(contact, UTM_MEDIUM_FIELD_ID) || "(nenhum)";
+    const utmContent =
+      getContactUtmField(contact, UTM_CONTENT_FIELD_ID) || "(nenhum)";
 
     dailyMap[dateStr] = (dailyMap[dateStr] ?? 0) + 1;
     monthlyLeads[monthKey] = (monthlyLeads[monthKey] ?? 0) + 1;
 
     sourceLeads[utmSource] = (sourceLeads[utmSource] ?? 0) + 1;
+
     if (!sourceMediumLeads[utmSource]) sourceMediumLeads[utmSource] = {};
     sourceMediumLeads[utmSource][utmMedium] =
       (sourceMediumLeads[utmSource][utmMedium] ?? 0) + 1;
+
+    if (!sourceMediumContentLeads[utmSource]) sourceMediumContentLeads[utmSource] = {};
+    if (!sourceMediumContentLeads[utmSource][utmMedium]) sourceMediumContentLeads[utmSource][utmMedium] = {};
+    sourceMediumContentLeads[utmSource][utmMedium][utmContent] =
+      (sourceMediumContentLeads[utmSource][utmMedium][utmContent] ?? 0) + 1;
 
     if (!sourceMonthLeads[utmSource]) sourceMonthLeads[utmSource] = {};
     sourceMonthLeads[utmSource][monthKey] =
@@ -159,6 +184,12 @@ export async function getLeadsMetrics(
       sourceMediumMonthLeads[utmSource][utmMedium] = {};
     sourceMediumMonthLeads[utmSource][utmMedium][monthKey] =
       (sourceMediumMonthLeads[utmSource][utmMedium][monthKey] ?? 0) + 1;
+
+    if (!sourceMediumContentMonthLeads[utmSource]) sourceMediumContentMonthLeads[utmSource] = {};
+    if (!sourceMediumContentMonthLeads[utmSource][utmMedium]) sourceMediumContentMonthLeads[utmSource][utmMedium] = {};
+    if (!sourceMediumContentMonthLeads[utmSource][utmMedium][utmContent]) sourceMediumContentMonthLeads[utmSource][utmMedium][utmContent] = {};
+    sourceMediumContentMonthLeads[utmSource][utmMedium][utmContent][monthKey] =
+      (sourceMediumContentMonthLeads[utmSource][utmMedium][utmContent][monthKey] ?? 0) + 1;
 
     const email = contact.email?.toLowerCase().trim();
     const isConverted = email ? alunosPoaEmails.has(email) : false;
@@ -172,6 +203,11 @@ export async function getLeadsMetrics(
         sourceMediumConversions[utmSource] = {};
       sourceMediumConversions[utmSource][utmMedium] =
         (sourceMediumConversions[utmSource][utmMedium] ?? 0) + 1;
+
+      if (!sourceMediumContentConversions[utmSource]) sourceMediumContentConversions[utmSource] = {};
+      if (!sourceMediumContentConversions[utmSource][utmMedium]) sourceMediumContentConversions[utmSource][utmMedium] = {};
+      sourceMediumContentConversions[utmSource][utmMedium][utmContent] =
+        (sourceMediumContentConversions[utmSource][utmMedium][utmContent] ?? 0) + 1;
     }
   }
 
@@ -208,11 +244,24 @@ export async function getLeadsMetrics(
         leads > 0 ? parseFloat(((conversions / leads) * 100).toFixed(2)) : 0;
       const mediumMap = sourceMediumLeads[source] ?? {};
       const mediums = Object.entries(mediumMap)
-        .map(([medium, mLeads]) => ({
-          medium,
-          leads: mLeads,
-          conversions: sourceMediumConversions[source]?.[medium] ?? 0,
-        }))
+        .map(([medium, mLeads]) => {
+          const contents = Object.entries(
+            sourceMediumContentLeads[source]?.[medium] ?? {}
+          )
+            .map(([content, cLeads]) => ({
+              content,
+              leads: cLeads,
+              conversions:
+                sourceMediumContentConversions[source]?.[medium]?.[content] ?? 0,
+            }))
+            .sort((a, b) => b.leads - a.leads);
+          return {
+            medium,
+            leads: mLeads,
+            conversions: sourceMediumConversions[source]?.[medium] ?? 0,
+            contents,
+          };
+        })
         .sort((a, b) => b.leads - a.leads);
       return { source, leads, conversions, rate, mediums };
     })
@@ -223,11 +272,23 @@ export async function getLeadsMetrics(
       const total = sourceLeads[source] ?? 0;
       const mediumMonthMap = sourceMediumMonthLeads[source] ?? {};
       const mediums = Object.entries(mediumMonthMap)
-        .map(([medium, mByMonth]) => ({
-          medium,
-          total: Object.values(mByMonth).reduce((a, b) => a + b, 0),
-          byMonth: mByMonth,
-        }))
+        .map(([medium, mByMonth]) => {
+          const contentMonthMap =
+            sourceMediumContentMonthLeads[source]?.[medium] ?? {};
+          const contents = Object.entries(contentMonthMap)
+            .map(([content, cByMonth]) => ({
+              content,
+              total: Object.values(cByMonth).reduce((a, b) => a + b, 0),
+              byMonth: cByMonth,
+            }))
+            .sort((a, b) => b.total - a.total);
+          return {
+            medium,
+            total: Object.values(mByMonth).reduce((a, b) => a + b, 0),
+            byMonth: mByMonth,
+            contents,
+          };
+        })
         .sort((a, b) => b.total - a.total);
       return { source, total, byMonth, mediums };
     })

@@ -33,12 +33,22 @@ interface ExpandableRow {
   source: string;
   total: number;
   byMonth: Record<string, number>;
-  mediums: Array<{ medium: string; total: number; byMonth: Record<string, number> }>;
+  mediums: Array<{
+    medium: string;
+    total: number;
+    byMonth: Record<string, number>;
+    contents: Array<{ content: string; total: number; byMonth: Record<string, number> }>;
+  }>;
 }
 
 function UtmTable({ months, rows }: { months: string[]; rows: ExpandableRow[] }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const toggle = (src: string) => setExpanded((p) => ({ ...p, [src]: !p[src] }));
+  const [expandedMediums, setExpandedMediums] = useState<Record<string, boolean>>({});
+
+  const toggleSource = (src: string) =>
+    setExpanded((p) => ({ ...p, [src]: !p[src] }));
+  const toggleMedium = (key: string) =>
+    setExpandedMediums((p) => ({ ...p, [key]: !p[key] }));
 
   const totalsRow: Record<string, number> = {};
   let grandTotal = 0;
@@ -62,7 +72,7 @@ function UtmTable({ months, rows }: { months: string[]; rows: ExpandableRow[] })
       <table className="w-full text-xs">
         <thead>
           <tr className="border-b border-border">
-            <th className="text-left py-2 pr-4 pl-2 text-muted-foreground font-medium w-40 min-w-[9rem] sticky left-0 bg-card">
+            <th className="text-left py-2 pr-4 pl-2 text-muted-foreground font-medium w-44 min-w-[10rem] sticky left-0 bg-card">
               Origem UTM
             </th>
             {months.map((mk) => (
@@ -78,9 +88,10 @@ function UtmTable({ months, rows }: { months: string[]; rows: ExpandableRow[] })
         <tbody>
           {rows.map((row) => (
             <Fragment key={row.source}>
+              {/* Level 1: source */}
               <tr
                 className="border-b border-border/40 hover:bg-sidebar-accent cursor-pointer"
-                onClick={() => toggle(row.source)}
+                onClick={() => toggleSource(row.source)}
               >
                 <td className="py-2 pr-4 pl-2 sticky left-0 bg-card">
                   <div className="flex items-center gap-1.5">
@@ -104,24 +115,69 @@ function UtmTable({ months, rows }: { months: string[]; rows: ExpandableRow[] })
                 })}
                 <td className="text-right py-2 px-2 pl-4 text-foreground font-bold">{row.total}</td>
               </tr>
-              {expanded[row.source] && row.mediums.map((med) => (
-                <tr key={`${row.source}:${med.medium}`} className="border-b border-border/20 bg-sidebar/40">
-                  <td className="py-1.5 pr-4 pl-8 sticky left-0 bg-sidebar/40 text-muted-foreground">
-                    ↳ {med.medium}
-                  </td>
-                  {months.map((mk) => {
-                    const val = med.byMonth[mk] ?? 0;
-                    return (
-                      <td key={mk} className="text-right py-1.5 px-2 text-muted-foreground">
-                        {val > 0 ? val : <span className="text-muted-foreground/30">—</span>}
+
+              {/* Level 2: medium */}
+              {expanded[row.source] && row.mediums.map((med) => {
+                const medKey = `${row.source}::${med.medium}`;
+                const hasContents = med.contents.length > 0;
+                return (
+                  <Fragment key={medKey}>
+                    <tr
+                      className={`border-b border-border/20 bg-sidebar/40 ${hasContents ? "cursor-pointer hover:bg-sidebar/60" : ""}`}
+                      onClick={hasContents ? () => toggleMedium(medKey) : undefined}
+                    >
+                      <td className="py-1.5 pr-4 pl-7 sticky left-0 bg-sidebar/40 text-muted-foreground">
+                        <div className="flex items-center gap-1">
+                          {hasContents ? (
+                            expandedMediums[medKey] ? (
+                              <ChevronDown className="w-2.5 h-2.5 text-muted-foreground/60 shrink-0" />
+                            ) : (
+                              <ChevronRight className="w-2.5 h-2.5 text-muted-foreground/60 shrink-0" />
+                            )
+                          ) : (
+                            <span className="w-2.5 h-2.5 shrink-0" />
+                          )}
+                          ↳ {med.medium}
+                        </div>
                       </td>
-                    );
-                  })}
-                  <td className="text-right py-1.5 px-2 pl-4 text-muted-foreground font-semibold">
-                    {med.total}
-                  </td>
-                </tr>
-              ))}
+                      {months.map((mk) => {
+                        const val = med.byMonth[mk] ?? 0;
+                        return (
+                          <td key={mk} className="text-right py-1.5 px-2 text-muted-foreground">
+                            {val > 0 ? val : <span className="text-muted-foreground/30">—</span>}
+                          </td>
+                        );
+                      })}
+                      <td className="text-right py-1.5 px-2 pl-4 text-muted-foreground font-semibold">
+                        {med.total}
+                      </td>
+                    </tr>
+
+                    {/* Level 3: content */}
+                    {expandedMediums[medKey] && med.contents.map((ct) => (
+                      <tr
+                        key={`${medKey}::${ct.content}`}
+                        className="border-b border-border/10 bg-sidebar/20"
+                      >
+                        <td className="py-1 pr-4 pl-12 sticky left-0 bg-sidebar/20 text-muted-foreground/70 truncate">
+                          ↳↳ {ct.content}
+                        </td>
+                        {months.map((mk) => {
+                          const val = ct.byMonth[mk] ?? 0;
+                          return (
+                            <td key={mk} className="text-right py-1 px-2 text-muted-foreground/60">
+                              {val > 0 ? val : <span className="text-muted-foreground/20">—</span>}
+                            </td>
+                          );
+                        })}
+                        <td className="text-right py-1 px-2 pl-4 text-muted-foreground/70 font-medium">
+                          {ct.total}
+                        </td>
+                      </tr>
+                    ))}
+                  </Fragment>
+                );
+              })}
             </Fragment>
           ))}
           <tr className="border-t border-border bg-sidebar/60">
@@ -519,7 +575,7 @@ export default function Funnel() {
       <div className="bg-card border border-card-border rounded-xl p-4 sm:p-5">
         <h2 className="text-sm font-semibold text-foreground mb-1">Leads por Origem UTM × Mês</h2>
         <p className="text-xs text-muted-foreground mb-4">
-          Clique em uma origem para expandir por mídia (utm_medium) — exclusivo tag Free-Trial, a partir de março/2026
+          Clique em uma origem para expandir por mídia (utm_medium) · clique na mídia para expandir por conteúdo (utm_content) — exclusivo tag Free-Trial, a partir de março/2026
         </p>
         {leadsLoading ? (
           <div className="h-52 bg-muted rounded animate-pulse" />
