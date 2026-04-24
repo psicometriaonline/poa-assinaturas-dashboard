@@ -90,6 +90,7 @@ export interface PlanAcquisitionData {
   byInterval: Array<{ label: string; count: number }>;
   history: Array<{ month: string; plans: Record<string, number> }>;
   topPlans: string[];
+  totalConversions: number;
 }
 
 export async function fetchPlanAcquisition(start: string, end: string) {

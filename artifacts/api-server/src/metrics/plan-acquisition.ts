@@ -1,10 +1,15 @@
 import { query } from "../lib/db";
+import { getListContactEmails } from "../sources/activecampaign";
+import { logger } from "../lib/logger";
+
+const ALUNOS_POA_LIST_ID = "30";
 
 export interface PlanAcquisitionMetrics {
   byPlan: Array<{ plan: string; interval: string; count: number }>;
   byInterval: Array<{ label: string; count: number }>;
   history: Array<{ month: string; plans: Record<string, number> }>;
   topPlans: string[];
+  totalConversions: number;
 }
 
 function toMonthLabel(ym: string): string {
@@ -27,16 +32,26 @@ export async function getPlanAcquisitionMetrics(
   startMs: number,
   endMs: number
 ): Promise<PlanAcquisitionMetrics> {
+  const alunosPoaEmails = await getListContactEmails(ALUNOS_POA_LIST_ID);
+  const emailsArray = Array.from(alunosPoaEmails);
+
+  logger.info({ alunosPoaEmails: alunosPoaEmails.size }, "Plan acquisition: Alunos POA email count");
+
+  if (emailsArray.length === 0) {
+    return { byPlan: [], byInterval: [], history: [], topPlans: [], totalConversions: 0 };
+  }
+
   const [planRows, monthlyRows] = await Promise.all([
     query<{ plan_name: string; plan_interval: string; cnt: string }>(
       `SELECT plan_name, plan_interval, COUNT(*) as cnt
        FROM hotmart_subscriptions
-       WHERE accession_date IS NOT NULL
-         AND accession_date >= $1
-         AND accession_date <= $2
+       WHERE LOWER(subscriber_email) = ANY($1)
+         AND accession_date IS NOT NULL
+         AND accession_date >= $2
+         AND accession_date <= $3
        GROUP BY plan_name, plan_interval
        ORDER BY cnt DESC`,
-      [startMs, endMs]
+      [emailsArray, startMs, endMs]
     ),
     query<{ month: string; plan_name: string; cnt: string }>(
       `SELECT
@@ -47,20 +62,25 @@ export async function getPlanAcquisitionMetrics(
          plan_name,
          COUNT(*) AS cnt
        FROM hotmart_subscriptions
-       WHERE accession_date IS NOT NULL
-         AND accession_date >= $1
-         AND accession_date <= $2
+       WHERE LOWER(subscriber_email) = ANY($1)
+         AND accession_date IS NOT NULL
+         AND accession_date >= $2
+         AND accession_date <= $3
        GROUP BY 1, 2
        ORDER BY 1`,
-      [startMs, endMs]
+      [emailsArray, startMs, endMs]
     ),
   ]);
+
+  logger.info({ planRows: planRows.length, monthlyRows: monthlyRows.length }, "Plan acquisition: DB rows");
 
   const byPlan = planRows.map((r) => ({
     plan: r.plan_name ?? "Desconhecido",
     interval: intervalLabel(r.plan_interval),
     count: parseInt(r.cnt, 10),
   }));
+
+  const totalConversions = byPlan.reduce((s, p) => s + p.count, 0);
 
   const intervalMap: Record<string, number> = {};
   for (const r of planRows) {
@@ -71,7 +91,6 @@ export async function getPlanAcquisitionMetrics(
     .map(([label, count]) => ({ label, count }))
     .sort((a, b) => b.count - a.count);
 
-  // Top 5 plans by total (for line chart series)
   const planTotals: Record<string, number> = {};
   for (const r of planRows) {
     const name = r.plan_name ?? "Desconhecido";
@@ -82,7 +101,6 @@ export async function getPlanAcquisitionMetrics(
     .slice(0, 5)
     .map(([name]) => name);
 
-  // Build sorted month list
   const monthSet = new Set(monthlyRows.map((r) => r.month));
   const months = Array.from(monthSet).sort();
 
@@ -100,5 +118,5 @@ export async function getPlanAcquisitionMetrics(
     plans: historyMap[mk],
   }));
 
-  return { byPlan, byInterval, history, topPlans };
+  return { byPlan, byInterval, history, topPlans, totalConversions };
 }

@@ -6,7 +6,6 @@ import { usePeriod } from "@/context/PeriodContext";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, LabelList,
-  LineChart, Line,
   PieChart, Pie, Cell,
 } from "recharts";
 import { ChevronDown, ChevronRight } from "lucide-react";
@@ -341,10 +340,13 @@ export default function Funnel() {
         </div>
       </div>
 
-      {/* Planos Adquiridos */}
+      {/* Planos Adquiridos — Alunos POA */}
       <div>
-        <h2 className="text-base font-semibold text-foreground mb-1">Planos Adquiridos</h2>
-        <p className="text-xs text-muted-foreground mb-3">Distribuição e evolução das aquisições por plano e periodicidade</p>
+        <h2 className="text-base font-semibold text-foreground mb-1">Planos Adquiridos — Alunos POA</h2>
+        <p className="text-xs text-muted-foreground mb-3">
+          Distribuição de planos dos assinantes ativos (Alunos POA)
+          {pa ? ` · ${pa.totalConversions} assinaturas no período` : ""}
+        </p>
       </div>
 
       {/* Pie charts: by plan + by interval */}
@@ -352,82 +354,78 @@ export default function Funnel() {
         <div className="bg-card border border-card-border rounded-xl p-4 sm:p-5">
           <h2 className="text-sm font-semibold text-foreground mb-4">Distribuição por Plano</h2>
           {planLoading ? (
-            <div className="h-64 bg-muted rounded animate-pulse" />
+            <div className="h-80 bg-muted rounded animate-pulse" />
           ) : !pa || pa.byPlan.length === 0 ? (
-            <div className="h-64 flex items-center justify-center text-muted-foreground text-sm">Sem dados para o período</div>
+            <div className="h-80 flex items-center justify-center text-muted-foreground text-sm">Sem dados para o período</div>
           ) : (
-            <div className="flex flex-col sm:flex-row items-center gap-4">
-              <ResponsiveContainer width="100%" height={220}>
-                <PieChart>
-                  <Pie
-                    data={pa.byPlan.map((p) => ({ name: p.plan, value: p.count }))}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={55}
-                    outerRadius={90}
-                    paddingAngle={2}
-                    dataKey="value"
-                  >
-                    {pa.byPlan.map((_, i) => (
-                      <Cell key={i} fill={PLAN_COLORS[i % PLAN_COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    contentStyle={TOOLTIP_STYLE}
-                    formatter={(value: number, name: string) => [formatNumber(value), name]}
-                  />
-                  <Legend
-                    wrapperStyle={{ fontSize: 11, color: "#94a3b8" }}
-                    formatter={(value: string) => value.length > 22 ? value.slice(0, 22) + "…" : value}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
+            <ResponsiveContainer width="100%" height={320}>
+              <PieChart margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
+                <Pie
+                  data={pa.byPlan.map((p) => ({ name: p.plan, value: p.count }))}
+                  cx="50%"
+                  cy="45%"
+                  innerRadius={58}
+                  outerRadius={100}
+                  paddingAngle={2}
+                  dataKey="value"
+                >
+                  {pa.byPlan.map((_, i) => (
+                    <Cell key={i} fill={PLAN_COLORS[i % PLAN_COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  contentStyle={TOOLTIP_STYLE}
+                  formatter={(value: number, name: string) => [formatNumber(value), name]}
+                />
+                <Legend
+                  wrapperStyle={{ fontSize: 11, color: "#94a3b8", marginTop: 8 }}
+                  formatter={(value: string) => value.length > 28 ? value.slice(0, 28) + "…" : value}
+                />
+              </PieChart>
+            </ResponsiveContainer>
           )}
         </div>
 
         <div className="bg-card border border-card-border rounded-xl p-4 sm:p-5">
           <h2 className="text-sm font-semibold text-foreground mb-4">Distribuição por Periodicidade</h2>
           {planLoading ? (
-            <div className="h-64 bg-muted rounded animate-pulse" />
+            <div className="h-80 bg-muted rounded animate-pulse" />
           ) : !pa || pa.byInterval.length === 0 ? (
-            <div className="h-64 flex items-center justify-center text-muted-foreground text-sm">Sem dados para o período</div>
+            <div className="h-80 flex items-center justify-center text-muted-foreground text-sm">Sem dados para o período</div>
           ) : (
-            <div className="flex flex-col items-center gap-4">
-              <ResponsiveContainer width="100%" height={220}>
-                <PieChart>
-                  <Pie
-                    data={pa.byInterval}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={55}
-                    outerRadius={90}
-                    paddingAngle={2}
-                    dataKey="count"
-                    nameKey="label"
-                    label={({ label, percent }) => `${label} ${(percent * 100).toFixed(0)}%`}
-                    labelLine={false}
-                  >
-                    {pa.byInterval.map((_, i) => (
-                      <Cell key={i} fill={INTERVAL_COLORS[i % INTERVAL_COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    contentStyle={TOOLTIP_STYLE}
-                    formatter={(value: number, name: string) => [formatNumber(value), name]}
-                  />
-                  <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8" }} />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
+            <ResponsiveContainer width="100%" height={320}>
+              <PieChart margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
+                <Pie
+                  data={pa.byInterval}
+                  cx="50%"
+                  cy="45%"
+                  innerRadius={58}
+                  outerRadius={100}
+                  paddingAngle={2}
+                  dataKey="count"
+                  nameKey="label"
+                  label={({ label, percent }) => `${label} ${(percent * 100).toFixed(0)}%`}
+                  labelLine={false}
+                >
+                  {pa.byInterval.map((_, i) => (
+                    <Cell key={i} fill={INTERVAL_COLORS[i % INTERVAL_COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  contentStyle={TOOLTIP_STYLE}
+                  formatter={(value: number, name: string) => [formatNumber(value), name]}
+                />
+                <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8", marginTop: 8 }} />
+              </PieChart>
+            </ResponsiveContainer>
           )}
         </div>
       </div>
 
-      {/* Line chart: monthly acquisition by plan */}
+      {/* Stacked bar chart: monthly conversion by plan */}
       <div className="bg-card border border-card-border rounded-xl p-4 sm:p-5">
-        <h2 className="text-sm font-semibold text-foreground mb-1">Aquisições por Plano — Evolução Mensal</h2>
-        <p className="text-xs text-muted-foreground mb-4">Top {pa?.topPlans.length ?? 5} planos + agrupamento "Outros"</p>
+        <h2 className="text-sm font-semibold text-foreground mb-1">Conversões por Plano — Evolução Mensal</h2>
+        <p className="text-xs text-muted-foreground mb-4">Assinantes Alunos POA por plano, agrupados por mês de adesão</p>
         {planLoading ? (
           <div className="h-64 bg-muted rounded animate-pulse" />
         ) : !pa || pa.history.length === 0 ? (
@@ -443,29 +441,30 @@ export default function Funnel() {
           });
           return (
             <ResponsiveContainer width="100%" height={280}>
-              <LineChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 4 }}>
+              <BarChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 4 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                 <XAxis dataKey="month" tick={{ fill: "#94a3b8", fontSize: 11 }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fill: "#94a3b8", fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
                 <Tooltip
                   contentStyle={TOOLTIP_STYLE}
+                  cursor={{ fill: "rgba(255,255,255,0.04)" }}
                   formatter={(value: number, name: string) => [formatNumber(value), name]}
                 />
-                <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8", paddingTop: 12 }}
+                <Legend
+                  wrapperStyle={{ fontSize: 11, color: "#94a3b8", paddingTop: 12 }}
                   formatter={(value: string) => value.length > 24 ? value.slice(0, 24) + "…" : value}
                 />
                 {allSeries.map((planName, i) => (
-                  <Line
+                  <Bar
                     key={planName}
-                    type="monotone"
                     dataKey={planName}
-                    stroke={PLAN_COLORS[i % PLAN_COLORS.length]}
-                    strokeWidth={2}
-                    dot={false}
-                    activeDot={{ r: 4 }}
+                    stackId="plans"
+                    fill={PLAN_COLORS[i % PLAN_COLORS.length]}
+                    maxBarSize={64}
+                    radius={i === allSeries.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
                   />
                 ))}
-              </LineChart>
+              </BarChart>
             </ResponsiveContainer>
           );
         })()}
