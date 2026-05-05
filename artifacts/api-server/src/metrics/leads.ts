@@ -13,6 +13,7 @@ const ALUNOS_POA_LIST_ID = "30";
 const UTM_CONTENT_FIELD_ID = "12";
 const UTM_SOURCE_FIELD_ID = "13";
 const UTM_MEDIUM_FIELD_ID = "14";
+const UTM_CAMPAIGN_FIELD_ID = "15";
 
 export interface LeadsBySourceRow {
   source: string;
@@ -50,10 +51,15 @@ export interface LeadsMetrics {
       medium: string;
       total: number;
       byMonth: Record<string, number>;
-      contents: Array<{
-        content: string;
+      campaigns: Array<{
+        campaign: string;
         total: number;
         byMonth: Record<string, number>;
+        contents: Array<{
+          content: string;
+          total: number;
+          byMonth: Record<string, number>;
+        }>;
       }>;
     }>;
   }>;
@@ -144,9 +150,13 @@ export async function getLeadsMetrics(
     string,
     Record<string, Record<string, number>>
   > = {};
-  const sourceMediumContentMonthLeads: Record<
+  const sourceMediumCampaignMonthLeads: Record<
     string,
     Record<string, Record<string, Record<string, number>>>
+  > = {};
+  const sourceMediumCampaignContentMonthLeads: Record<
+    string,
+    Record<string, Record<string, Record<string, Record<string, number>>>>
   > = {};
 
   for (const contact of contacts) {
@@ -157,6 +167,8 @@ export async function getLeadsMetrics(
       getContactUtmField(contact, UTM_SOURCE_FIELD_ID) || "(direto)";
     const utmMedium =
       getContactUtmField(contact, UTM_MEDIUM_FIELD_ID) || "(nenhum)";
+    const utmCampaign =
+      getContactUtmField(contact, UTM_CAMPAIGN_FIELD_ID) || "(nenhum)";
     const utmContent =
       getContactUtmField(contact, UTM_CONTENT_FIELD_ID) || "(nenhum)";
 
@@ -185,11 +197,18 @@ export async function getLeadsMetrics(
     sourceMediumMonthLeads[utmSource][utmMedium][monthKey] =
       (sourceMediumMonthLeads[utmSource][utmMedium][monthKey] ?? 0) + 1;
 
-    if (!sourceMediumContentMonthLeads[utmSource]) sourceMediumContentMonthLeads[utmSource] = {};
-    if (!sourceMediumContentMonthLeads[utmSource][utmMedium]) sourceMediumContentMonthLeads[utmSource][utmMedium] = {};
-    if (!sourceMediumContentMonthLeads[utmSource][utmMedium][utmContent]) sourceMediumContentMonthLeads[utmSource][utmMedium][utmContent] = {};
-    sourceMediumContentMonthLeads[utmSource][utmMedium][utmContent][monthKey] =
-      (sourceMediumContentMonthLeads[utmSource][utmMedium][utmContent][monthKey] ?? 0) + 1;
+    if (!sourceMediumCampaignMonthLeads[utmSource]) sourceMediumCampaignMonthLeads[utmSource] = {};
+    if (!sourceMediumCampaignMonthLeads[utmSource][utmMedium]) sourceMediumCampaignMonthLeads[utmSource][utmMedium] = {};
+    if (!sourceMediumCampaignMonthLeads[utmSource][utmMedium][utmCampaign]) sourceMediumCampaignMonthLeads[utmSource][utmMedium][utmCampaign] = {};
+    sourceMediumCampaignMonthLeads[utmSource][utmMedium][utmCampaign][monthKey] =
+      (sourceMediumCampaignMonthLeads[utmSource][utmMedium][utmCampaign][monthKey] ?? 0) + 1;
+
+    if (!sourceMediumCampaignContentMonthLeads[utmSource]) sourceMediumCampaignContentMonthLeads[utmSource] = {};
+    if (!sourceMediumCampaignContentMonthLeads[utmSource][utmMedium]) sourceMediumCampaignContentMonthLeads[utmSource][utmMedium] = {};
+    if (!sourceMediumCampaignContentMonthLeads[utmSource][utmMedium][utmCampaign]) sourceMediumCampaignContentMonthLeads[utmSource][utmMedium][utmCampaign] = {};
+    if (!sourceMediumCampaignContentMonthLeads[utmSource][utmMedium][utmCampaign][utmContent]) sourceMediumCampaignContentMonthLeads[utmSource][utmMedium][utmCampaign][utmContent] = {};
+    sourceMediumCampaignContentMonthLeads[utmSource][utmMedium][utmCampaign][utmContent][monthKey] =
+      (sourceMediumCampaignContentMonthLeads[utmSource][utmMedium][utmCampaign][utmContent][monthKey] ?? 0) + 1;
 
     const email = contact.email?.toLowerCase().trim();
     const isConverted = email ? alunosPoaEmails.has(email) : false;
@@ -273,20 +292,31 @@ export async function getLeadsMetrics(
       const mediumMonthMap = sourceMediumMonthLeads[source] ?? {};
       const mediums = Object.entries(mediumMonthMap)
         .map(([medium, mByMonth]) => {
-          const contentMonthMap =
-            sourceMediumContentMonthLeads[source]?.[medium] ?? {};
-          const contents = Object.entries(contentMonthMap)
-            .map(([content, cByMonth]) => ({
-              content,
-              total: Object.values(cByMonth).reduce((a, b) => a + b, 0),
-              byMonth: cByMonth,
-            }))
+          const campaignMonthMap = sourceMediumCampaignMonthLeads[source]?.[medium] ?? {};
+          const campaigns = Object.entries(campaignMonthMap)
+            .map(([campaign, campByMonth]) => {
+              const contentMonthMap =
+                sourceMediumCampaignContentMonthLeads[source]?.[medium]?.[campaign] ?? {};
+              const contents = Object.entries(contentMonthMap)
+                .map(([content, cByMonth]) => ({
+                  content,
+                  total: Object.values(cByMonth).reduce((a, b) => a + b, 0),
+                  byMonth: cByMonth,
+                }))
+                .sort((a, b) => b.total - a.total);
+              return {
+                campaign,
+                total: Object.values(campByMonth).reduce((a, b) => a + b, 0),
+                byMonth: campByMonth,
+                contents,
+              };
+            })
             .sort((a, b) => b.total - a.total);
           return {
             medium,
             total: Object.values(mByMonth).reduce((a, b) => a + b, 0),
             byMonth: mByMonth,
-            contents,
+            campaigns,
           };
         })
         .sort((a, b) => b.total - a.total);

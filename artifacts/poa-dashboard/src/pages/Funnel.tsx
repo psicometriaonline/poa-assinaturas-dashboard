@@ -38,18 +38,26 @@ interface ExpandableRow {
     medium: string;
     total: number;
     byMonth: Record<string, number>;
-    contents: Array<{ content: string; total: number; byMonth: Record<string, number> }>;
+    campaigns: Array<{
+      campaign: string;
+      total: number;
+      byMonth: Record<string, number>;
+      contents: Array<{ content: string; total: number; byMonth: Record<string, number> }>;
+    }>;
   }>;
 }
 
 function UtmTable({ months, rows }: { months: string[]; rows: ExpandableRow[] }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [expandedMediums, setExpandedMediums] = useState<Record<string, boolean>>({});
+  const [expandedCampaigns, setExpandedCampaigns] = useState<Record<string, boolean>>({});
 
   const toggleSource = (src: string) =>
     setExpanded((p) => ({ ...p, [src]: !p[src] }));
   const toggleMedium = (key: string) =>
     setExpandedMediums((p) => ({ ...p, [key]: !p[key] }));
+  const toggleCampaign = (key: string) =>
+    setExpandedCampaigns((p) => ({ ...p, [key]: !p[key] }));
 
   const totalsRow: Record<string, number> = {};
   let grandTotal = 0;
@@ -120,16 +128,16 @@ function UtmTable({ months, rows }: { months: string[]; rows: ExpandableRow[] })
               {/* Level 2: medium */}
               {expanded[row.source] && row.mediums.map((med) => {
                 const medKey = `${row.source}::${med.medium}`;
-                const hasContents = med.contents.length > 0;
+                const hasCampaigns = med.campaigns.length > 0;
                 return (
                   <Fragment key={medKey}>
                     <tr
-                      className={`border-b border-border/20 bg-sidebar/40 ${hasContents ? "cursor-pointer hover:bg-sidebar/60" : ""}`}
-                      onClick={hasContents ? () => toggleMedium(medKey) : undefined}
+                      className={`border-b border-border/20 bg-sidebar/40 ${hasCampaigns ? "cursor-pointer hover:bg-sidebar/60" : ""}`}
+                      onClick={hasCampaigns ? () => toggleMedium(medKey) : undefined}
                     >
                       <td className="py-1.5 pr-4 pl-7 sticky left-0 bg-sidebar/40 text-muted-foreground">
                         <div className="flex items-center gap-1">
-                          {hasContents ? (
+                          {hasCampaigns ? (
                             expandedMediums[medKey] ? (
                               <ChevronDown className="w-2.5 h-2.5 text-muted-foreground/60 shrink-0" />
                             ) : (
@@ -154,28 +162,68 @@ function UtmTable({ months, rows }: { months: string[]; rows: ExpandableRow[] })
                       </td>
                     </tr>
 
-                    {/* Level 3: content */}
-                    {expandedMediums[medKey] && med.contents.map((ct) => (
-                      <tr
-                        key={`${medKey}::${ct.content}`}
-                        className="border-b border-border/10 bg-sidebar/20"
-                      >
-                        <td className="py-1 pr-4 pl-12 sticky left-0 bg-sidebar/20 text-muted-foreground/70 truncate">
-                          ↳↳ {ct.content}
-                        </td>
-                        {months.map((mk) => {
-                          const val = ct.byMonth[mk] ?? 0;
-                          return (
-                            <td key={mk} className="text-right py-1 px-2 text-muted-foreground/60">
-                              {val > 0 ? val : <span className="text-muted-foreground/20">—</span>}
+                    {/* Level 3: campaign */}
+                    {expandedMediums[medKey] && med.campaigns.map((camp) => {
+                      const campKey = `${medKey}::${camp.campaign}`;
+                      const hasContents = camp.contents.length > 0;
+                      return (
+                        <Fragment key={campKey}>
+                          <tr
+                            className={`border-b border-border/10 bg-sidebar/25 ${hasContents ? "cursor-pointer hover:bg-sidebar/40" : ""}`}
+                            onClick={hasContents ? () => toggleCampaign(campKey) : undefined}
+                          >
+                            <td className="py-1 pr-4 pl-12 sticky left-0 bg-sidebar/25 text-muted-foreground/80 truncate">
+                              <div className="flex items-center gap-1">
+                                {hasContents ? (
+                                  expandedCampaigns[campKey] ? (
+                                    <ChevronDown className="w-2 h-2 text-muted-foreground/50 shrink-0" />
+                                  ) : (
+                                    <ChevronRight className="w-2 h-2 text-muted-foreground/50 shrink-0" />
+                                  )
+                                ) : (
+                                  <span className="w-2 h-2 shrink-0" />
+                                )}
+                                ↳↳ {camp.campaign}
+                              </div>
                             </td>
-                          );
-                        })}
-                        <td className="text-right py-1 px-2 pl-4 text-muted-foreground/70 font-medium">
-                          {ct.total}
-                        </td>
-                      </tr>
-                    ))}
+                            {months.map((mk) => {
+                              const val = camp.byMonth[mk] ?? 0;
+                              return (
+                                <td key={mk} className="text-right py-1 px-2 text-muted-foreground/70">
+                                  {val > 0 ? val : <span className="text-muted-foreground/20">—</span>}
+                                </td>
+                              );
+                            })}
+                            <td className="text-right py-1 px-2 pl-4 text-muted-foreground/80 font-medium">
+                              {camp.total}
+                            </td>
+                          </tr>
+
+                          {/* Level 4: content */}
+                          {expandedCampaigns[campKey] && camp.contents.map((ct) => (
+                            <tr
+                              key={`${campKey}::${ct.content}`}
+                              className="border-b border-border/5 bg-sidebar/15"
+                            >
+                              <td className="py-1 pr-4 pl-16 sticky left-0 bg-sidebar/15 text-muted-foreground/50 truncate">
+                                ↳↳↳ {ct.content}
+                              </td>
+                              {months.map((mk) => {
+                                const val = ct.byMonth[mk] ?? 0;
+                                return (
+                                  <td key={mk} className="text-right py-1 px-2 text-muted-foreground/40">
+                                    {val > 0 ? val : <span className="text-muted-foreground/15">—</span>}
+                                  </td>
+                                );
+                              })}
+                              <td className="text-right py-1 px-2 pl-4 text-muted-foreground/50 font-medium">
+                                {ct.total}
+                              </td>
+                            </tr>
+                          ))}
+                        </Fragment>
+                      );
+                    })}
                   </Fragment>
                 );
               })}
@@ -567,7 +615,7 @@ export default function Funnel() {
       <div className="bg-card border border-card-border rounded-xl p-4 sm:p-5">
         <h2 className="text-sm font-semibold text-foreground mb-1">Leads por Origem UTM × Mês</h2>
         <p className="text-xs text-muted-foreground mb-4">
-          Clique em uma origem para expandir por mídia (utm_medium) · clique na mídia para expandir por conteúdo (utm_content) — exclusivo tag Free-Trial, a partir de março/2026
+          Clique na origem para expandir por mídia · na mídia para expandir por campanha (utm_campaign) · na campanha para expandir por conteúdo (utm_content) — Free-Trial, a partir de março/2026
         </p>
         {leadsLoading ? (
           <div className="h-52 bg-muted rounded animate-pulse" />

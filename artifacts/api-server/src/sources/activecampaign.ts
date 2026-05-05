@@ -339,7 +339,7 @@ export function getContactUtmField(contact: ACContact, fieldId: string): string 
     if (fv?.value?.trim()) return fv.value.trim();
   }
 
-  const legacyMap: Record<string, string> = { "12": "utm_content", "13": "utm_source", "14": "utm_medium" };
+  const legacyMap: Record<string, string> = { "12": "utm_content", "13": "utm_source", "14": "utm_medium", "15": "utm_campaign" };
   const legacyKey = legacyMap[fieldId];
   if (legacyKey) {
     const fields = contact.fields as ACField[] | undefined;
