@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { Upload, CheckCircle, AlertCircle, Loader2, ShieldCheck, LogOut, Mail } from "lucide-react";
+import { Upload, CheckCircle, AlertCircle, Loader2, ShieldCheck, LogOut, Mail, RefreshCw } from "lucide-react";
 import { formatBRL, formatNumber } from "@/lib/api";
 
 const ALLOWED_EMAILS = [
@@ -18,6 +18,13 @@ interface ImportResult {
   arr: number;
   activeSubscribers: number;
   byProduct: Record<string, number>;
+}
+
+interface AcCacheResult {
+  tagId: string;
+  listId: string;
+  tagEmailCount: number;
+  listEmailCount: number;
 }
 
 function EmailGate({ onAccess }: { onAccess: (email: string) => void }) {
@@ -90,6 +97,40 @@ export default function Admin() {
   const [result, setResult] = useState<ImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [acLoading, setAcLoading] = useState(false);
+  const [acResult, setAcResult] = useState<AcCacheResult | null>(null);
+  const [acError, setAcError] = useState<string | null>(null);
+
+  async function handleRefreshAcCache() {
+    if (!token) return;
+    setAcLoading(true);
+    setAcError(null);
+    setAcResult(null);
+
+    try {
+      const res = await fetch("/api/admin/refresh-ac-cache", {
+        method: "POST",
+        headers: { "x-admin-token": token },
+      });
+      let json: { error: boolean; message?: string; data?: AcCacheResult };
+      try {
+        json = await res.json();
+      } catch {
+        setAcError(`Erro ${res.status}: resposta inválida do servidor.`);
+        return;
+      }
+      if (!res.ok || json.error) {
+        setAcError(json.message ?? `Erro ${res.status} ao atualizar cache AC.`);
+      } else {
+        setAcResult(json.data!);
+      }
+    } catch (e) {
+      setAcError(e instanceof Error ? e.message : "Erro de rede.");
+    } finally {
+      setAcLoading(false);
+    }
+  }
 
   function handleLogout() {
     localStorage.removeItem(STORAGE_KEY);
@@ -220,6 +261,64 @@ export default function Admin() {
           </div>
         </div>
       )}
+
+      <div className="bg-card border border-card-border rounded-xl p-6 space-y-4">
+        <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+          <RefreshCw className="w-4 h-4 text-purple-400" />
+          Cache ActiveCampaign
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Força a atualização imediata dos e-mails da tag 401 e lista 30 no cache do servidor.
+          Usa o token de administrador informado acima.
+        </p>
+
+        <button
+          onClick={handleRefreshAcCache}
+          disabled={!token || acLoading}
+          className="w-full bg-purple-600 text-white rounded-lg py-2.5 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-purple-500 transition-colors"
+        >
+          {acLoading ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Atualizando cache…
+            </>
+          ) : (
+            <>
+              <RefreshCw className="w-4 h-4" />
+              Atualizar Cache AC
+            </>
+          )}
+        </button>
+
+        {acError && (
+          <div className="flex items-start gap-3 bg-red-500/10 border border-red-500/30 rounded-lg p-3">
+            <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-medium text-red-300">Erro ao atualizar cache</p>
+              <p className="text-xs text-red-400/80 mt-0.5">{acError}</p>
+            </div>
+          </div>
+        )}
+
+        {acResult && (
+          <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <CheckCircle className="w-4 h-4 text-green-400" />
+              <p className="text-sm font-semibold text-green-300">Cache atualizado com sucesso</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-background/40 rounded-lg p-3 text-center">
+                <p className="text-lg font-bold text-foreground">{formatNumber(acResult.tagEmailCount)}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">E-mails tag {acResult.tagId}</p>
+              </div>
+              <div className="bg-background/40 rounded-lg p-3 text-center">
+                <p className="text-lg font-bold text-foreground">{formatNumber(acResult.listEmailCount)}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">E-mails lista {acResult.listId}</p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
 
       {result && (
         <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-5 space-y-4">
