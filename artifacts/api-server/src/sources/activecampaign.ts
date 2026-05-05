@@ -1,4 +1,10 @@
 import { logger } from "../lib/logger";
+import { withCache } from "../cache";
+
+const DEFAULT_AC_EMAIL_CACHE_TTL_MS = 15 * 60 * 1000;
+const _parsedTtl = parseInt(process.env.AC_EMAIL_CACHE_TTL_MS ?? "", 10);
+const AC_EMAIL_CACHE_TTL_MS =
+  Number.isFinite(_parsedTtl) && _parsedTtl > 0 ? _parsedTtl : DEFAULT_AC_EMAIL_CACHE_TTL_MS;
 
 function getConfig() {
   const apiKey = process.env.AC_API_KEY || "";
@@ -229,74 +235,90 @@ export async function getLeadContacts(tagId: string): Promise<ACContact[]> {
 /**
  * Fetch all active contact emails from a list (e.g. "Alunos - POA", list 30).
  * Returns a Set of lowercase-trimmed emails for fast lookup.
+ * Results are cached for AC_EMAIL_CACHE_TTL_MS (default 15 min).
  */
 export async function getListContactEmails(listId: string): Promise<Set<string>> {
-  try {
-    const emails = new Set<string>();
-    let offset = 0;
-    const limit = 100;
+  return withCache(
+    `ac:list-emails:${listId}`,
+    async () => {
+      try {
+        const emails = new Set<string>();
+        let offset = 0;
+        const limit = 100;
 
-    while (true) {
-      const data = (await acFetch("/contacts", {
-        listid: listId,
-        status: "1",
-        limit: limit.toString(),
-        offset: offset.toString(),
-      })) as {
-        contacts?: ACContact[];
-        meta?: { total?: string };
-      };
+        while (true) {
+          const data = (await acFetch("/contacts", {
+            listid: listId,
+            status: "1",
+            limit: limit.toString(),
+            offset: offset.toString(),
+          })) as {
+            contacts?: ACContact[];
+            meta?: { total?: string };
+          };
 
-      const contacts = data.contacts ?? [];
-      for (const c of contacts) {
-        if (c.email) emails.add(c.email.toLowerCase().trim());
+          const contacts = data.contacts ?? [];
+          for (const c of contacts) {
+            if (c.email) emails.add(c.email.toLowerCase().trim());
+          }
+
+          if (contacts.length < limit) break;
+          offset += limit;
+        }
+
+        logger.info({ listId, count: emails.size }, "AC list contact emails fetched and cached");
+        return emails;
+      } catch (err) {
+        logger.error({ err }, "Error fetching AC list contact emails");
+        throw err;
       }
-
-      if (contacts.length < limit) break;
-      offset += limit;
-    }
-
-    return emails;
-  } catch (err) {
-    logger.error({ err }, "Error fetching AC list contact emails");
-    throw err;
-  }
+    },
+    AC_EMAIL_CACHE_TTL_MS
+  );
 }
 
 /**
  * Fetch all contact emails with a given tag ID.
  * Returns a Set of lowercase-trimmed emails for fast intersection with list emails.
+ * Results are cached for AC_EMAIL_CACHE_TTL_MS (default 15 min).
  */
 export async function getTagContactEmails(tagId: string): Promise<Set<string>> {
-  try {
-    const emails = new Set<string>();
-    let offset = 0;
-    const limit = 100;
+  return withCache(
+    `ac:tag-emails:${tagId}`,
+    async () => {
+      try {
+        const emails = new Set<string>();
+        let offset = 0;
+        const limit = 100;
 
-    while (true) {
-      const data = (await acFetch("/contacts", {
-        tagid: tagId,
-        limit: limit.toString(),
-        offset: offset.toString(),
-      })) as {
-        contacts?: ACContact[];
-        meta?: { total?: string };
-      };
+        while (true) {
+          const data = (await acFetch("/contacts", {
+            tagid: tagId,
+            limit: limit.toString(),
+            offset: offset.toString(),
+          })) as {
+            contacts?: ACContact[];
+            meta?: { total?: string };
+          };
 
-      const contacts = data.contacts ?? [];
-      for (const c of contacts) {
-        if (c.email) emails.add(c.email.toLowerCase().trim());
+          const contacts = data.contacts ?? [];
+          for (const c of contacts) {
+            if (c.email) emails.add(c.email.toLowerCase().trim());
+          }
+
+          if (contacts.length < limit) break;
+          offset += limit;
+        }
+
+        logger.info({ tagId, count: emails.size }, "AC tag contact emails fetched and cached");
+        return emails;
+      } catch (err) {
+        logger.error({ err }, "Error fetching AC tag contact emails");
+        throw err;
       }
-
-      if (contacts.length < limit) break;
-      offset += limit;
-    }
-
-    return emails;
-  } catch (err) {
-    logger.error({ err }, "Error fetching AC tag contact emails");
-    throw err;
-  }
+    },
+    AC_EMAIL_CACHE_TTL_MS
+  );
 }
 
 /**
