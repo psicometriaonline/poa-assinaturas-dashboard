@@ -161,6 +161,16 @@ export interface LeadsData {
       medium: string;
       total: number;
       byMonth: Record<string, number>;
+      campaigns: Array<{
+        campaign: string;
+        total: number;
+        byMonth: Record<string, number>;
+        contents: Array<{
+          content: string;
+          total: number;
+          byMonth: Record<string, number>;
+        }>;
+      }>;
     }>;
   }>;
 }
