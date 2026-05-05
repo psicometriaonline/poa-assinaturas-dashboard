@@ -6,20 +6,22 @@ import { logger } from "./lib/logger";
 const ALUNOS_POA_LIST_ID = "30";
 const FREE_TRIAL_TAG_ID = "401";
 
-async function warmAcEmailCaches(): Promise<void> {
+export interface AcEmailCacheSizes {
+  tagCount: number;
+  listCount: number;
+}
+
+export async function warmAcEmailCaches(): Promise<AcEmailCacheSizes> {
   logger.info("Cron: warming AC email caches (tag-401 + list-30)");
-  try {
-    const [tagEmails, listEmails] = await Promise.all([
-      getTagContactEmails(FREE_TRIAL_TAG_ID),
-      getListContactEmails(ALUNOS_POA_LIST_ID),
-    ]);
-    logger.info(
-      { tagCount: tagEmails.size, listCount: listEmails.size },
-      "Cron: AC email caches warmed"
-    );
-  } catch (err) {
-    logger.error({ err }, "Cron: AC email cache warm failed");
-  }
+  const [tagEmails, listEmails] = await Promise.all([
+    getTagContactEmails(FREE_TRIAL_TAG_ID),
+    getListContactEmails(ALUNOS_POA_LIST_ID),
+  ]);
+  logger.info(
+    { tagCount: tagEmails.size, listCount: listEmails.size },
+    "Cron: AC email caches warmed"
+  );
+  return { tagCount: tagEmails.size, listCount: listEmails.size };
 }
 
 export function startCronJobs(): void {
@@ -37,9 +39,17 @@ export function startCronJobs(): void {
     { timezone: "America/Sao_Paulo" }
   );
 
-  cron.schedule("*/15 * * * *", warmAcEmailCaches);
+  cron.schedule("*/15 * * * *", async () => {
+    try {
+      await warmAcEmailCaches();
+    } catch (err) {
+      logger.error({ err }, "Cron: AC email cache warm failed");
+    }
+  });
 
-  warmAcEmailCaches();
+  warmAcEmailCaches().catch((err) => {
+    logger.error({ err }, "Cron: initial AC email cache warm failed");
+  });
 
   logger.info("Cron jobs scheduled (leads snapshot @ 03:00 BRT daily; AC email cache refresh every 15 min)");
 }

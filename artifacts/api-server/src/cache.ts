@@ -35,3 +35,8 @@ export function clearCache(): void {
   cache.clear();
   inFlight.clear();
 }
+
+export function deleteCacheKey(key: string): void {
+  cache.delete(key);
+  inFlight.delete(key);
+}

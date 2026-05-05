@@ -3,7 +3,8 @@ import multer from "multer";
 import * as XLSX from "xlsx";
 import { query } from "../lib/db";
 import { logger } from "../lib/logger";
-import { clearCache } from "../cache";
+import { clearCache, deleteCacheKey } from "../cache";
+import { warmAcEmailCaches } from "../cron";
 
 const router: IRouter = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -205,6 +206,33 @@ router.post("/clear-cache", requireAdminToken, (_req: Request, res: Response) =>
   clearCache();
   logger.info("Cache limpo manualmente via admin");
   res.json({ error: false, data: { message: "Cache limpo com sucesso." } });
+});
+
+router.post("/refresh-ac-cache", requireAdminToken, async (_req: Request, res: Response) => {
+  deleteCacheKey("ac:tag-emails:401");
+  deleteCacheKey("ac:list-emails:30");
+
+  logger.info("Admin: forcing AC email cache refresh (tag-401 + list-30)");
+
+  try {
+    const { tagCount, listCount } = await warmAcEmailCaches();
+
+    res.json({
+      error: false,
+      data: {
+        tagId: "401",
+        listId: "30",
+        tagEmailCount: tagCount,
+        listEmailCount: listCount,
+      },
+    });
+  } catch (err) {
+    logger.error({ err }, "Admin: AC email cache refresh failed");
+    res.status(500).json({
+      error: true,
+      message: err instanceof Error ? err.message : "Erro ao atualizar cache AC.",
+    });
+  }
 });
 
 export default router;
