@@ -26,6 +26,7 @@ const TOOLTIP_STYLE = {
   border: "1px solid #334155",
   borderRadius: 8,
   fontSize: 12,
+  color: "#e2e8f0",
 };
 
 function toMonthLabel(mk: string): string {
