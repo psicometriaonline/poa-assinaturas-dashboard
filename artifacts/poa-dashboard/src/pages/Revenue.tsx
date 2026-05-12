@@ -13,7 +13,7 @@ const PLAN_COLORS = ["#3b82f6", "#22c55e", "#eab308", "#ef4444", "#a855f7", "#06
 type MrrTab = "breakdown" | "mrr" | "arr";
 
 const tooltip = {
-  contentStyle: { backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: 8 },
+  contentStyle: { backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: 8, color: "#e2e8f0" },
   labelStyle: { color: "#94a3b8" },
 };
 const axTick = { fill: "#94a3b8", fontSize: 11 };

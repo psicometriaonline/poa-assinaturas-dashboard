@@ -168,6 +168,7 @@ export default function Traffic() {
                   border: "1px solid hsl(var(--border))",
                   borderRadius: "8px",
                   fontSize: 12,
+                  color: "#e2e8f0",
                 }}
               />
               <Legend wrapperStyle={{ fontSize: 12 }} />
@@ -277,6 +278,7 @@ export default function Traffic() {
                     border: "1px solid hsl(var(--border))",
                     borderRadius: "8px",
                     fontSize: 12,
+                    color: "#e2e8f0",
                   }}
                 />
                 <Bar dataKey="value" fill={CHART_COLOR_1} radius={[0, 4, 4, 0]} name="Sessões" />

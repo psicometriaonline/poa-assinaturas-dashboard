@@ -36,7 +36,7 @@ function MrrChart() {
           <XAxis dataKey="month" tick={{ fill: "#94a3b8", fontSize: 11 }} />
           <YAxis tick={{ fill: "#94a3b8", fontSize: 11 }} tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`} />
           <Tooltip
-            contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: 8 }}
+            contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: 8, color: "#e2e8f0" }}
             labelStyle={{ color: "#94a3b8" }}
             formatter={(v: number) => [formatBRL(v), "MRR"]}
           />
