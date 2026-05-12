@@ -109,6 +109,8 @@ function DonutSection({ title, data }: { title: string; data: Array<{ label: str
           </Pie>
           <Tooltip
             contentStyle={TOOLTIP_STYLE}
+            itemStyle={{ color: "#e2e8f0" }}
+            labelStyle={{ color: "#94a3b8" }}
             formatter={(value: number) => [formatNumber(value), "Membros"]}
           />
         </PieChart>

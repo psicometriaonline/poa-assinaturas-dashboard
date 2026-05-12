@@ -481,6 +481,8 @@ export default function Funnel() {
                 </Pie>
                 <Tooltip
                   contentStyle={TOOLTIP_STYLE}
+                  itemStyle={{ color: "#e2e8f0" }}
+                  labelStyle={{ color: "#94a3b8" }}
                   formatter={(value: number, name: string) => [formatNumber(value), name]}
                 />
                 <Legend
@@ -519,6 +521,8 @@ export default function Funnel() {
                 </Pie>
                 <Tooltip
                   contentStyle={TOOLTIP_STYLE}
+                  itemStyle={{ color: "#e2e8f0" }}
+                  labelStyle={{ color: "#94a3b8" }}
                   formatter={(value: number, name: string) => [formatNumber(value), name]}
                 />
                 <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8", marginTop: 8 }} />
