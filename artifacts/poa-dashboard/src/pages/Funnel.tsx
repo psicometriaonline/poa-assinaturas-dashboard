@@ -258,7 +258,7 @@ export default function Funnel() {
     queryFn: () => fetchLeads(start, end),
   });
 
-  const { data: planResp, isLoading: planLoading, error: planErr } = useQuery({
+  const { data: planResp, isLoading: planLoading } = useQuery({
     queryKey: ["plan-acquisition", start, end],
     queryFn: () => fetchPlanAcquisition(start, end),
   });
@@ -325,12 +325,11 @@ export default function Funnel() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3 sm:gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
         <KPICard title="Cadastros Gratuitos" value={f ? formatNumber(f.totalRegistrations) : "—"} subtitle="com tag Free-Trial" loading={isLoading} error={!!hasError} errorMessage={errMsg} />
         <KPICard title="Conversões" value={f ? formatNumber(f.totalConversions) : "—"} subtitle="tornaram-se assinantes" loading={isLoading} error={!!hasError} errorMessage={errMsg} />
         <KPICard title="Taxa de Conversão" value={f ? formatPct(f.conversionRate) : "—"} loading={isLoading} error={!!hasError} errorMessage={errMsg} />
         <KPICard title="Tempo Médio Conversão" value={f ? `${f.avgDaysToConversion} dias` : "—"} loading={isLoading} error={!!hasError} errorMessage={errMsg} invertChange />
-        <KPICard title="Converts Free Trial" value={pa ? formatNumber(pa.totalConversions) : "—"} subtitle="tag-401 ∩ lista-30" loading={planLoading} error={!planLoading && !pa} errorMessage={planResp?.message ?? (planErr as Error)?.message} />
       </div>
 
       {/* Cadastros vs. Conversões (mensal) — estilo Evolução Mensal */}
