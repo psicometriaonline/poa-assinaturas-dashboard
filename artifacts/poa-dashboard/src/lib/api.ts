@@ -51,6 +51,7 @@ export async function fetchRevenue(start?: string, end?: string) {
     byPlan: Array<{ plan: string; subscribers: number; revenue: number; percentage: number }>;
     history: Array<{
       month: string;
+      monthKey: string;
       mrr: number;
       arr: number;
       arpu: number;

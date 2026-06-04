@@ -31,7 +31,7 @@ function formatMonthKey(monthKey: string): string {
 }
 
 export async function getRevenueMetrics(_startDate: Date, _endDate: Date): Promise<RevenueMetrics> {
-  const [summaryRows, byPlanRows, historyRows, cancellationRows] = await Promise.all([
+  const [summaryRows, byPlanRows, historyRows, mrrRemovalRows, churnRows] = await Promise.all([
     query<{ mrr: string; count: string }>(
       `SELECT
          COALESCE(SUM(
@@ -70,15 +70,39 @@ export async function getRevenueMetrics(_startDate: Date, _endDate: Date): Promi
        FROM hotmart_subscriptions
        WHERE accession_date IS NOT NULL
          AND price_value IS NOT NULL
-         AND original_event IN ('IMPORT_CSV', 'PURCHASE_APPROVED', 'REACTIVATED_PURCHASE')
        GROUP BY 1, 2
        ORDER BY 2 ASC`
     ),
-    query<{ month_key: string; cancelled: string; mrr_lost: string }>(
+    // MRR removed (money out): derived from the subscriptions table itself (one row
+    // per subscriber, no double-counting) so the cumulative MRR curve reconciles
+    // exactly with the live "MRR Atual" snapshot. A subscriber stops contributing MRR
+    // when status <> 'ACTIVE' (cancelled, inactive AND past-due/delinquent — none of
+    // these are paying). The exit month uses cancellation_date when present, otherwise
+    // the last event timestamp. Only subscribers that were added (accession_date
+    // present) are subtracted, so SUM(added) - SUM(removed) == active MRR.
+    query<{ month_key: string; mrr_lost: string }>(
+      `SELECT
+         TO_CHAR(DATE_TRUNC('month', COALESCE(TO_TIMESTAMP(cancellation_date / 1000), last_event_at)), 'YYYY-MM') AS month_key,
+         COALESCE(SUM(
+           CASE WHEN mrr_contribution IS NOT NULL THEN mrr_contribution
+                WHEN plan_interval = 'ANNUAL' THEN ROUND(price_value / 12, 2)
+                ELSE price_value END
+         ), 0) AS mrr_lost
+       FROM hotmart_subscriptions
+       WHERE status <> 'ACTIVE'
+         AND accession_date IS NOT NULL
+         AND price_value IS NOT NULL
+       GROUP BY 1
+       ORDER BY 1 ASC`
+    ),
+    // Cancellation COUNT (churnedSubs / churnRate): kept on the webhook-event
+    // definition (CHURN_EVENTS) so it stays consistent with the dedicated churn
+    // metric. This intentionally differs from the MRR removal above — a past-due
+    // subscriber stops paying (removed from MRR) but is NOT counted as a cancellation.
+    query<{ month_key: string; cancelled: string }>(
       `WITH monthly_cancels AS (
          SELECT DISTINCT ON (
-           TO_CHAR(DATE_TRUNC('month', received_at), 'YYYY-MM'),
-           subscriber_code
+           TO_CHAR(DATE_TRUNC('month', received_at), 'YYYY-MM'), subscriber_code
          )
            TO_CHAR(DATE_TRUNC('month', received_at), 'YYYY-MM') AS month_key,
            subscriber_code
@@ -89,20 +113,10 @@ export async function getRevenueMetrics(_startDate: Date, _endDate: Date): Promi
            subscriber_code,
            received_at ASC
        )
-       SELECT
-         mc.month_key,
-         COUNT(*) AS cancelled,
-         COALESCE(SUM(
-           CASE WHEN hs.mrr_contribution IS NOT NULL THEN hs.mrr_contribution
-                WHEN hs.plan_interval = 'ANNUAL' THEN ROUND(hs.price_value / 12, 2)
-                ELSE hs.price_value END
-         ), 0) AS mrr_lost
-       FROM monthly_cancels mc
-       LEFT JOIN hotmart_subscriptions hs
-         ON hs.subscriber_code = mc.subscriber_code
-         AND hs.price_value IS NOT NULL
-       GROUP BY mc.month_key
-       ORDER BY mc.month_key ASC`,
+       SELECT month_key, COUNT(*) AS cancelled
+       FROM monthly_cancels
+       GROUP BY month_key
+       ORDER BY month_key ASC`,
       [[...CHURN_EVENTS]]
     ),
   ]);
@@ -133,15 +147,22 @@ export async function getRevenueMetrics(_startDate: Date, _endDate: Date): Promi
     ])
   );
 
-  const cancellationByMonth = new Map<string, { count: number; mrrLost: number }>(
-    cancellationRows.map((r) => [
-      r.month_key,
-      { count: parseInt(r.cancelled, 10), mrrLost: parseFloat(r.mrr_lost) },
-    ])
+  // Money out (MRR) — drives the cumulative MRR curve so it reconciles with the KPI.
+  const mrrLostByMonth = new Map<string, number>(
+    mrrRemovalRows.map((r) => [r.month_key, parseFloat(r.mrr_lost)])
+  );
+
+  // Cancellation count — drives churnedSubs / churnRate (webhook-event definition).
+  const churnCountByMonth = new Map<string, number>(
+    churnRows.map((r) => [r.month_key, parseInt(r.cancelled, 10)])
   );
 
   const allMonthKeys = Array.from(
-    new Set([...acquisitionByMonth.keys(), ...cancellationByMonth.keys()])
+    new Set([
+      ...acquisitionByMonth.keys(),
+      ...mrrLostByMonth.keys(),
+      ...churnCountByMonth.keys(),
+    ])
   ).sort();
 
   let cumulativeSubs = 0;
@@ -152,9 +173,8 @@ export async function getRevenueMetrics(_startDate: Date, _endDate: Date): Promi
     const acq = acquisitionByMonth.get(monthKey);
     const newSubs = acq?.newSubs ?? 0;
     const mrrAdded = acq?.mrrAdded ?? 0;
-    const cancel = cancellationByMonth.get(monthKey) ?? { count: 0, mrrLost: 0 };
-    const churnedSubs = cancel.count;
-    const mrrLost = cancel.mrrLost;
+    const churnedSubs = churnCountByMonth.get(monthKey) ?? 0;
+    const mrrLost = mrrLostByMonth.get(monthKey) ?? 0;
 
     const startSubs = cumulativeSubs;
     const base = startSubs + churnedSubs;
