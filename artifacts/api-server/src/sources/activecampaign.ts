@@ -97,8 +97,9 @@ async function paginateContacts(params: Record<string, string>): Promise<ACConta
 
     results.push(...contacts);
 
-    if (contacts.length < limit) break;
+    if (contacts.length === 0) break;
     offset += limit;
+    if (data.meta?.total !== undefined && offset >= parseInt(data.meta.total, 10)) break;
   }
 
   return results;
@@ -221,8 +222,9 @@ export async function getLeadContacts(tagId: string): Promise<ACContact[]> {
 
       results.push(...contacts);
 
-      if (contacts.length < limit) break;
+      if (contacts.length === 0) break;
       offset += limit;
+      if (data.meta?.total !== undefined && offset >= parseInt(data.meta.total, 10)) break;
     }
 
     return results;
@@ -262,8 +264,9 @@ export async function getListContactEmails(listId: string): Promise<Set<string>>
             if (c.email) emails.add(c.email.toLowerCase().trim());
           }
 
-          if (contacts.length < limit) break;
+          if (contacts.length === 0) break;
           offset += limit;
+          if (data.meta?.total !== undefined && offset >= parseInt(data.meta.total, 10)) break;
         }
 
         logger.info({ listId, count: emails.size }, "AC list contact emails fetched and cached");
@@ -306,8 +309,9 @@ export async function getTagContactEmails(tagId: string): Promise<Set<string>> {
             if (c.email) emails.add(c.email.toLowerCase().trim());
           }
 
-          if (contacts.length < limit) break;
+          if (contacts.length === 0) break;
           offset += limit;
+          if (data.meta?.total !== undefined && offset >= parseInt(data.meta.total, 10)) break;
         }
 
         logger.info({ tagId, count: emails.size }, "AC tag contact emails fetched and cached");
