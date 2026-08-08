@@ -7,6 +7,8 @@ import { getRetentionMetrics } from "../metrics/retention";
 import { getSubscriptionsMetrics } from "../metrics/subscriptions";
 import { getAcquisitionMetrics } from "../metrics/acquisition";
 import { getLeadMapMetrics } from "../metrics/leadmap";
+import { getDataCoverage } from "../metrics/coverage";
+import { clampStart } from "../lib/metrics-window";
 import { query } from "../lib/db";
 import {
   getWebsiteStats,
@@ -18,6 +20,8 @@ import {
   getCountries,
   getHourlyPageviews,
   readStat,
+  pickUnit,
+  isUmamiConfigured,
 } from "../sources/umami";
 
 const router: IRouter = Router();
@@ -37,7 +41,9 @@ function parseDateRange(req: Request): { startDate: Date; endDate: Date } {
   const endDate = req.query.end
     ? new Date(`${req.query.end as string}T23:59:59-03:00`)
     : new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  return { startDate, endDate };
+  // Clamped server-side so no caller can ask for a window that predates the
+  // company and drag every chart back through years of junk accession dates.
+  return { startDate: clampStart(startDate), endDate };
 }
 
 function errorResponse(message: string) {
@@ -83,6 +89,18 @@ router.get(
   metricRoute("acquisition", "Erro ao buscar aquisição", getAcquisitionMetrics)
 );
 
+router.get("/data-coverage", async (req: Request, res: Response) => {
+  try {
+    const data = await withCache("data-coverage", () => getDataCoverage(), 10 * 60 * 1000);
+    res.json({ error: false, data });
+  } catch (err) {
+    req.log.error({ err }, "Error fetching data coverage");
+    res
+      .status(500)
+      .json(errorResponse(err instanceof Error ? err.message : "Erro ao apurar cobertura de dados"));
+  }
+});
+
 router.get("/leadmap", async (_req: Request, res: Response) => {
   try {
     const data = await withCache("leadmap", () => getLeadMapMetrics(), 30 * 60 * 1000);
@@ -116,6 +134,30 @@ router.get("/traffic", async (req: Request, res: Response) => {
           getUtmCampaign(startAt, endAt),
           getCountries(startAt, endAt),
         ]);
+
+      // Failures used to collapse silently into zeros, so a blank traffic page
+      // was indistinguishable from a site with no visits. Collect them instead
+      // and hand them to the UI.
+      const errors: Array<{ source: string; message: string }> = [];
+      const NAMES = [
+        "estatísticas",
+        "série de pageviews",
+        "heatmap horário",
+        "páginas mais vistas",
+        "utm_source",
+        "utm_medium",
+        "utm_campaign",
+        "países",
+      ];
+      [stats, pageviewsData, hourlyData, topPaths, utmSource, utmMedium, utmCampaign, countries]
+        .forEach((r, i) => {
+          if (r.status === "rejected") {
+            errors.push({
+              source: NAMES[i],
+              message: r.reason instanceof Error ? r.reason.message : String(r.reason),
+            });
+          }
+        });
 
       function settled<T>(r: PromiseSettledResult<T>, fallback: T): T {
         return r.status === "fulfilled" ? r.value : fallback;
@@ -168,6 +210,9 @@ router.get("/traffic", async (req: Request, res: Response) => {
       }
 
       return {
+        configured: isUmamiConfigured(),
+        unit: pickUnit(startAt, endAt),
+        errors,
         stats: {
           pageviews: pageviewsVal,
           uniques: uniquesVal,

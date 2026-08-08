@@ -36,6 +36,23 @@ function countBy(items: string[], normalize?: (s: string) => string): Array<{ la
     .sort((a, b) => b.value - a.value);
 }
 
+/**
+ * The spreadsheet lets people type their own answer, so the raw field carries
+ * dozens of one-off spellings. Anything that is not clearly male or female is
+ * folded into "Outros" rather than shown as a long tail of single-count rows.
+ */
+function normalizeSexo(raw: string): string | null {
+  const value = raw
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  if (!value) return null;
+  if (/^(m|masc|masculino|homem|male|cis ?masculino|homem cis)$/.test(value)) return "Masculino";
+  if (/^(f|fem|feminino|mulher|female|cis ?feminino|mulher cis)$/.test(value)) return "Feminino";
+  return "Outros";
+}
+
 function countYesNo(items: string[]): { sim: number; nao: number } {
   let sim = 0;
   let nao = 0;
@@ -70,7 +87,16 @@ export async function getLeadMapMetrics(): Promise<LeadMapMetrics> {
   const professor = countYesNo(members.map((m) => m.professor_universitario));
   const coordPesquisa = countYesNo(members.map((m) => m.coord_pesquisa));
   const coordPPG = countYesNo(members.map((m) => m.coord_ppg));
-  const sexo = countBy(members.map((m) => m.sexo).filter(Boolean));
+  // Fixed order so the chart legend does not reshuffle as counts change.
+  const sexoCounts = countBy(
+    members.map((m) => m.sexo).filter(Boolean),
+    (v) => normalizeSexo(v) ?? ""
+  );
+  const SEXO_ORDER = ["Feminino", "Masculino", "Outros"];
+  const sexo = SEXO_ORDER.map((label) => ({
+    label,
+    value: sexoCounts.find((s) => s.label === label)?.value ?? 0,
+  })).filter((s) => s.value > 0);
   const topInstituicoes = countBy(members.map((m) => m.instituicao).filter(Boolean)).slice(0, 20);
 
   let totalMembers = 0;

@@ -20,8 +20,11 @@ import {
   axisTick,
   legendStyle,
   sequentialColor,
+  sequentialTextColor,
   tooltipProps,
 } from "@/lib/chart-theme";
+import { YearTabs } from "@/components/GranularityToggle";
+import { monthAbbr, yearsFrom } from "@/lib/time-grouping";
 import {
   Bar,
   BarChart,
@@ -37,21 +40,54 @@ import {
 
 type CohortMode = "logo" | "mrr";
 
-function CohortHeatmap({ data, mode }: { data: RetentionData; mode: CohortMode }) {
-  const offsets = Array.from({ length: Math.min(data.maxOffset + 1, 13) }, (_, i) => i);
+const COHORT_OFFSETS = Array.from({ length: 13 }, (_, i) => i);
 
+function CohortLegend({ mode }: { mode: CohortMode }) {
+  const stops = [0, 20, 40, 60, 80, 100];
+  return (
+    <div className="flex items-center gap-2 text-[11px] text-muted-foreground mt-4">
+      <span>{mode === "logo" ? "0% da coorte" : "0% do MRR"}</span>
+      <div className="flex">
+        {stops.map((v) => (
+          <span
+            key={v}
+            className="w-7 h-3 first:rounded-l last:rounded-r"
+            style={{ background: sequentialColor(v / 100) }}
+          />
+        ))}
+      </div>
+      <span>100% ainda ativo</span>
+    </div>
+  );
+}
+
+/**
+ * Retention matrix for one calendar year.
+ *
+ * Rows are the months people subscribed in; columns are how many months later.
+ * A cell answers: of everyone who joined in that month, what share was still
+ * paying N months afterwards. The full matrix used to render every cohort since
+ * 2021 in one 60-row table — unreadable, so it is now paged by year.
+ */
+function CohortHeatmap({
+  cohorts,
+  mode,
+}: {
+  cohorts: RetentionData["cohorts"];
+  mode: CohortMode;
+}) {
   return (
     <div className="overflow-x-auto">
       <table className="text-xs border-separate" style={{ borderSpacing: 2 }}>
         <thead>
           <tr>
             <th className="text-left font-medium text-muted-foreground pr-3 sticky left-0 bg-card">
-              Coorte
+              Mês de entrada
             </th>
-            <th className="text-right font-medium text-muted-foreground pr-3">
+            <th className="text-right font-medium text-muted-foreground pr-3 whitespace-nowrap">
               {mode === "logo" ? "Assinantes" : "MRR inicial"}
             </th>
-            {offsets.map((k) => (
+            {COHORT_OFFSETS.map((k) => (
               <th key={k} className="text-center font-medium text-muted-foreground min-w-[3.25rem]">
                 M{k}
               </th>
@@ -59,26 +95,33 @@ function CohortHeatmap({ data, mode }: { data: RetentionData; mode: CohortMode }
           </tr>
         </thead>
         <tbody>
-          {[...data.cohorts].reverse().map((cohort) => (
+          {cohorts.map((cohort) => (
             <tr key={cohort.cohortKey}>
-              <td className="pr-3 text-foreground font-medium whitespace-nowrap sticky left-0 bg-card">
-                {cohort.cohort}
+              <td className="pr-3 text-foreground font-medium whitespace-nowrap sticky left-0 bg-card capitalize">
+                {monthAbbr(cohort.cohortKey)}
               </td>
               <td className="pr-3 text-right text-muted-foreground tabular-nums whitespace-nowrap">
                 {mode === "logo" ? formatNumber(cohort.size) : formatBRL(cohort.initialMrr)}
               </td>
-              {offsets.map((k) => {
+              {COHORT_OFFSETS.map((k) => {
                 const cell = cohort.cells.find((c) => c.offset === k);
                 if (!cell) {
-                  return <td key={k} className="text-center text-muted-foreground/20">·</td>;
+                  return (
+                    <td key={k} className="text-center text-muted-foreground/20">
+                      ·
+                    </td>
+                  );
                 }
                 const rate = mode === "logo" ? cell.retentionRate : cell.mrrRetentionRate;
                 return (
                   <td
                     key={k}
-                    className="text-center rounded tabular-nums text-white py-1.5 px-1"
-                    style={{ background: sequentialColor(rate / 100) }}
-                    title={`${cohort.cohort} · M${k}: ${formatPct(rate)} (${formatNumber(cell.retained)} de ${formatNumber(cohort.size)})`}
+                    className="text-center rounded tabular-nums py-1.5 px-1 font-medium"
+                    style={{
+                      background: sequentialColor(rate / 100),
+                      color: sequentialTextColor(rate / 100),
+                    }}
+                    title={`Entraram em ${monthAbbr(cohort.cohortKey)}/${cohort.cohortKey.slice(2, 4)}: ${formatNumber(cell.retained)} de ${formatNumber(cohort.size)} ainda ativos ${k} ${k === 1 ? "mês" : "meses"} depois (${formatPct(rate)})`}
                   >
                     {rate.toFixed(0)}%
                   </td>
@@ -96,6 +139,7 @@ export default function Retention() {
   const { dateRange } = usePeriod();
   const { start, end } = dateRange;
   const [cohortMode, setCohortMode] = useState<CohortMode>("logo");
+  const [cohortYear, setCohortYear] = useState<string | null>(null);
 
   const { data: churnResp, isLoading, isError, error } = useQuery({
     queryKey: ["churn", start, end],
@@ -111,6 +155,12 @@ export default function Retention() {
   const r = retentionResp?.data;
   const hasError = isError || churnResp?.error;
   const errMsg = churnResp?.message ?? (error as Error)?.message;
+
+  const cohortYears = yearsFrom((r?.cohorts ?? []).map((co) => co.cohortKey));
+  const selectedYear = cohortYear && cohortYears.includes(cohortYear) ? cohortYear : cohortYears[0];
+  const cohortsOfYear = (r?.cohorts ?? []).filter(
+    (co) => co.cohortKey.slice(0, 4) === selectedYear
+  );
 
   const reasonData = (c?.history ?? []).map((h) => ({
     month: h.month,
@@ -296,35 +346,47 @@ export default function Retention() {
 
       <Panel
         title="Retenção por coorte"
-        description="Cada linha é o mês de entrada; M0 é o primeiro mês, M1 o seguinte, e assim por diante"
+        description="De cada grupo que assinou num mês, quantos ainda estavam pagando N meses depois. M0 é o mês de entrada, M1 o mês seguinte, e assim por diante."
         loading={retentionLoading}
-        isEmpty={(r?.cohorts.length ?? 0) === 0}
+        isEmpty={cohortsOfYear.length === 0}
         emptyMessage="Sem coortes no período selecionado"
         height={320}
         action={
-          <div className="flex items-center gap-0.5 bg-secondary rounded-lg p-1 shrink-0">
+          <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+            {cohortYears.length > 0 && (
+              <YearTabs
+                years={cohortYears}
+                value={selectedYear ?? ""}
+                onChange={setCohortYear}
+              />
+            )}
+            <div className="flex items-center gap-0.5 bg-secondary rounded-lg p-1 shrink-0">
             {(
               [
                 { key: "logo", label: "Assinantes" },
                 { key: "mrr", label: "Receita" },
               ] as { key: CohortMode; label: string }[]
             ).map((t) => (
-              <button
-                key={t.key}
-                onClick={() => setCohortMode(t.key)}
-                className={`px-3 py-1 text-xs rounded-md font-medium transition-colors ${
-                  cohortMode === t.key
-                    ? "bg-primary text-primary-foreground shadow"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
+                <button
+                  key={t.key}
+                  onClick={() => setCohortMode(t.key)}
+                  className={`px-3 py-1 text-xs rounded-md font-medium transition-colors ${
+                    cohortMode === t.key
+                      ? "bg-primary text-primary-foreground shadow"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
           </div>
         }
       >
-        {r && <CohortHeatmap data={r} mode={cohortMode} />}
+        <>
+          <CohortHeatmap cohorts={cohortsOfYear} mode={cohortMode} />
+          <CohortLegend mode={cohortMode} />
+        </>
       </Panel>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 sm:gap-4">

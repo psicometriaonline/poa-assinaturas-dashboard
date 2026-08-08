@@ -88,3 +88,17 @@ export function sequentialColor(t: number): string {
   const idx = Math.min(SEQUENTIAL.length - 1, Math.floor(clamped * SEQUENTIAL.length));
   return SEQUENTIAL[idx];
 }
+
+/**
+ * Ink for a label sitting on `sequentialColor(t)`.
+ *
+ * The top of the ramp is a pale blue: white text on it was barely legible, which
+ * is exactly where the cohort heatmap puts its most common value (100%). Past the
+ * midpoint the cell needs dark ink instead.
+ */
+export function sequentialTextColor(t: number): string {
+  if (!Number.isFinite(t) || t <= 0) return CHROME.axisTick;
+  const clamped = Math.min(1, t);
+  const idx = Math.min(SEQUENTIAL.length - 1, Math.floor(clamped * SEQUENTIAL.length));
+  return idx >= 4 ? "#0b1220" : "#ffffff";
+}

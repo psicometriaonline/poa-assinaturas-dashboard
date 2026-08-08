@@ -1,3 +1,5 @@
+import { METRICS_FLOOR_ISO } from "./metrics-window";
+
 /**
  * Shared SQL building blocks for the paid-subscription metrics.
  *
@@ -98,7 +100,7 @@ export const CHURN_EVENT_CTE = `
  * report instead of silently distorting it.
  */
 export const SUBS_CTE = `
-  subs AS (
+  subs_all AS (
     SELECT
       s.subscriber_code,
       LOWER(TRIM(COALESCE(s.subscriber_email, ''))) AS email,
@@ -148,6 +150,23 @@ export const SUBS_CTE = `
   )`;
 
 /**
+ * `subs` — the reporting universe: everything that started on or after the day
+ * the company began selling.
+ *
+ * Clamping only the requested *window* is not enough. A subscription dated 2017
+ * is still "already active" when a window opens in 2021, so the junk simply
+ * reappeared as an opening balance — and it inflated the live MRR snapshot,
+ * which has no window at all. Excluding the rows themselves is what makes both
+ * correct. `subs_all` stays available for the coverage diagnostic, which must be
+ * able to count exactly what is being left out.
+ */
+export const SUBS_IN_SCOPE_CTE = `
+  subs AS (
+    SELECT * FROM subs_all
+    WHERE started_at >= '${METRICS_FLOOR_ISO}T00:00:00-03:00'::timestamptz
+  )`;
+
+/**
  * `timeline` — the subset of `subs` whose lifetime is actually knowable, and the
  * only table any point-in-time query may read.
  *
@@ -165,7 +184,7 @@ export const TIMELINE_CTE = `
   )`;
 
 /** All CTEs, ready to prefix a query with `WITH`. */
-export const BASE_CTES = `${CHURN_EVENT_CTE},${SUBS_CTE},${TIMELINE_CTE}`;
+export const BASE_CTES = `${CHURN_EVENT_CTE},${SUBS_CTE},${SUBS_IN_SCOPE_CTE},${TIMELINE_CTE}`;
 
 /**
  * A month series in BRT. `$1`/`$2` are the range bounds; `m` is the timestamptz

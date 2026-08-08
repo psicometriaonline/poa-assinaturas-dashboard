@@ -11,6 +11,15 @@ export type GlobalPeriodKey =
   | "all"
   | "custom";
 
+/**
+ * The Academy started selling in January 2021. Hotmart holds records with older
+ * accession dates (tests, migrations, bad spreadsheet rows), so "Todo período"
+ * used to start in 2015 and stretch every axis across 137 mostly-empty months.
+ * The server clamps to this same floor — this constant only keeps the UI honest
+ * about what it is asking for. Keep both in sync (API: METRICS_START_DATE).
+ */
+export const METRICS_FLOOR = "2021-01-01";
+
 export const PERIOD_LABELS: Record<GlobalPeriodKey, string> = {
   today: "Hoje",
   yesterday: "Ontem",
@@ -25,6 +34,10 @@ export const PERIOD_LABELS: Record<GlobalPeriodKey, string> = {
 
 function fmt(d: Date): string {
   return d.toISOString().split("T")[0];
+}
+
+function maxDate(a: string, b: string): string {
+  return a >= b ? a : b;
 }
 
 export function computeDateRange(
@@ -66,16 +79,16 @@ export function computeDateRange(
     case "1year": {
       const s = new Date(today);
       s.setFullYear(today.getFullYear() - 1);
-      return { start: fmt(s), end: fmt(today) };
+      return { start: maxDate(fmt(s), METRICS_FLOOR), end: fmt(today) };
     }
     case "custom":
       return {
-        start: customStart || fmt(new Date(today.getFullYear(), 0, 1)),
+        start: maxDate(customStart || fmt(new Date(today.getFullYear(), 0, 1)), METRICS_FLOOR),
         end: customEnd || fmt(today),
       };
     case "all":
     default:
-      return { start: "2015-01-01", end: fmt(today) };
+      return { start: METRICS_FLOOR, end: fmt(today) };
   }
 }
 

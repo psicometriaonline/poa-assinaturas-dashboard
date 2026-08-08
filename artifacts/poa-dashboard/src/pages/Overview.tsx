@@ -1,3 +1,4 @@
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   fetchOverview,
@@ -10,6 +11,8 @@ import {
 import { usePeriod } from "@/context/PeriodContext";
 import { KPICard } from "@/components/KPICard";
 import { PageHeader, Panel, ErrorBanner } from "@/components/Panel";
+import { GranularityToggle } from "@/components/GranularityToggle";
+import { defaultGranularity, rollUpByYear, type Granularity } from "@/lib/time-grouping";
 import { POLARITY, SERIES, axisTick, legendStyle, tooltipProps, CHROME } from "@/lib/chart-theme";
 import {
   Area,
@@ -36,12 +39,30 @@ export default function Overview() {
   const d = data?.data;
   const hasError = isError || data?.error;
   const errMsg = data?.message ?? (error as Error)?.message;
+  const history = d?.history ?? [];
 
-  const movementData = (d?.history ?? []).map((h) => ({
-    month: h.month,
-    Novas: h.newSubs,
-    Cancelamentos: -h.churnedSubs,
-  }));
+  // With "Todo período" selected the monthly axis carries 60+ categories and the
+  // bars collapse to a couple of pixels — the chart looked empty even with data.
+  // Long windows therefore default to yearly buckets, still switchable by hand.
+  const [granularity, setGranularity] = useState<Granularity | null>(null);
+  const effectiveGranularity = granularity ?? defaultGranularity(history.length);
+
+  const movementData = useMemo(() => {
+    const rows = history.map((h) => ({
+      monthKey: h.monthKey,
+      label: h.month,
+      Novas: h.newSubs,
+      Cancelamentos: -h.churnedSubs,
+    }));
+    return effectiveGranularity === "ano"
+      ? rollUpByYear(rows, ["Novas", "Cancelamentos"])
+      : rows;
+  }, [history, effectiveGranularity]);
+
+  const mrrChartData = useMemo(() => {
+    const rows = history.map((h) => ({ monthKey: h.monthKey, label: h.month, mrr: h.mrr }));
+    return effectiveGranularity === "ano" ? rollUpByYear(rows, [], ["mrr"]) : rows;
+  }, [history, effectiveGranularity]);
 
   return (
     <div className="space-y-6">
@@ -228,12 +249,17 @@ export default function Overview() {
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 sm:gap-4">
         <Panel
           title="Evolução do MRR"
-          description="Saldo real da base ao final de cada mês"
+          description={
+            effectiveGranularity === "ano"
+              ? "MRR no fechamento de cada ano"
+              : "MRR no fechamento de cada mês"
+          }
           loading={isLoading}
-          isEmpty={(d?.history.length ?? 0) === 0}
+          isEmpty={mrrChartData.length === 0}
+          action={<GranularityToggle value={effectiveGranularity} onChange={setGranularity} />}
         >
           <ResponsiveContainer width="100%" height={240}>
-            <AreaChart data={d?.history ?? []} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+            <AreaChart data={mrrChartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="gradMrr" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor={SERIES[0]} stopOpacity={0.3} />
@@ -241,7 +267,7 @@ export default function Overview() {
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke={CHROME.grid} />
-              <XAxis dataKey="month" tick={axisTick} axisLine={false} tickLine={false} />
+              <XAxis dataKey="label" tick={axisTick} axisLine={false} tickLine={false} />
               <YAxis
                 tick={axisTick}
                 axisLine={false}
@@ -266,11 +292,12 @@ export default function Overview() {
           description="Cancelamentos abaixo da linha zero"
           loading={isLoading}
           isEmpty={movementData.length === 0}
+          action={<GranularityToggle value={effectiveGranularity} onChange={setGranularity} />}
         >
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={movementData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={CHROME.grid} />
-              <XAxis dataKey="month" tick={axisTick} axisLine={false} tickLine={false} />
+              <XAxis dataKey="label" tick={axisTick} axisLine={false} tickLine={false} />
               <YAxis
                 tick={axisTick}
                 axisLine={false}

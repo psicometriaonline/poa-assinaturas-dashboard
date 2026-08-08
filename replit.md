@@ -35,8 +35,25 @@ taxas de churn diferentes em três páginas.
 | CTE | O que é |
 |-----|---------|
 | `churn_ev` | primeiro evento de churn por assinante, usando o `creation_date` do próprio evento (e não `received_at`, que joga webhooks reprocessados no mês errado) |
-| `subs` | uma linha por assinante com intervalo de vida `[started_at, ended_at)` |
+| `subs_all` | uma linha por assinante com intervalo de vida `[started_at, ended_at)` — **só o diagnóstico de cobertura lê isso** |
+| `subs` | `subs_all` a partir do piso de reporte (jan/2021) — universo de reporte |
 | `timeline` | subconjunto de `subs` cuja vida é conhecível — **única tabela que consultas point-in-time podem ler** |
+
+### Piso de reporte
+
+A Academy começou a vender em **janeiro de 2021**, mas o Hotmart guarda registros
+com `accession_date` de 2015 em diante (compras de teste, migrações, linhas de planilha
+com data errada). Com "Todo período" selecionado isso esticava todo eixo por 137 meses —
+as barras reais viravam sub-pixel e a tabela mensal mostrava MRR em anos onde a empresa
+não existia.
+
+O corte está em `lib/metrics-window.ts` e é aplicado **nas linhas**, não só na janela:
+limitar apenas o período fazia o lixo reaparecer como saldo inicial de jan/2021 e
+continuava inflando o KPI de MRR atual, que não tem janela nenhuma.
+
+Nada é apagado. `GET /api/metrics/data-coverage` (e o painel em `/admin`) mostram
+exatamente quantas linhas ficam de fora, por ano. Para mudar o corte:
+`METRICS_START_DATE=YYYY-MM-DD`.
 
 `ended_at` **não** usa `last_event_at` como fallback: essa coluna recebe `NOW()` a cada
 upsert, o que empurrava todo assinante encerrado sem data para o mês corrente e criava um
@@ -71,6 +88,7 @@ seletor global antes era ignorado pela página de receita.
 - `GET /api/metrics/retention`
 - `GET /api/metrics/subscriptions`
 - `GET /api/metrics/acquisition`
+- `GET /api/metrics/data-coverage` — diagnóstico: o que existe no banco antes do piso
 - `GET /api/metrics/traffic`
 - `GET /api/metrics/leadmap`
 - `POST /api/webhooks/hotmart` — eventos de assinatura
@@ -132,6 +150,10 @@ reservados para polaridade (entrou × saiu) e sempre vêm com rótulo.
    preenchido — a página mostra a taxa de cobertura explicitamente.
 6. `status=CANCELLED` na API do Hotmart retorna 400 para estas credenciais; os dados de
    cancelamento vêm dos webhooks e da planilha importada.
+7. **Tráfego** depende do Umami. Janelas longas são consultadas com `unit=month` —
+   pedir `unit=day` em vários anos fazia a API devolver milhares de buckets ou recusar
+   a chamada, e a página ficava zerada. Falhas agora aparecem na tela em vez de virarem
+   zeros silenciosos.
 
 ---
 
@@ -144,6 +166,7 @@ reservados para polaridade (entrou × saiu) e sempre vêm com rótulo.
 | `HOTMART_WEBHOOK_TOKEN` | (opcional) valida o `hottok` dos webhooks |
 | `AC_API_KEY` / `AC_BASE_URL` | ActiveCampaign (atribuição de origem) |
 | `AC_MEMBERS_LIST_ID` | (opcional) lista de assinantes no AC — padrão `30` |
+| `METRICS_START_DATE` | (opcional) piso de reporte — padrão `2021-01-01` |
 | `UMAMI_API_TOKEN` / `UMAMI_BASE_URL` / `UMAMI_WEBSITE_ID` | tráfego web |
 | `ADMIN_SECRET` | endpoints administrativos |
 

@@ -11,6 +11,8 @@ import { usePeriod } from "@/context/PeriodContext";
 import { KPICard } from "@/components/KPICard";
 import { PageHeader, Panel, ErrorBanner } from "@/components/Panel";
 import { CHROME, axisTick, seriesColor, tooltipProps } from "@/lib/chart-theme";
+import { YearTabs } from "@/components/GranularityToggle";
+import { MONTH_ABBR, yearsFrom } from "@/lib/time-grouping";
 import {
   Bar,
   BarChart,
@@ -23,26 +25,54 @@ import {
 } from "recharts";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
-function UtmTable({ data }: { data: AcquisitionData }) {
+const MONTHS_OF_YEAR = Array.from({ length: 12 }, (_, i) =>
+  String(i + 1).padStart(2, "0")
+);
+
+/**
+ * Origins as rows, the twelve months of one year as columns.
+ *
+ * Showing every month since 2021 side by side produced a table dozens of columns
+ * wide that had to be scrolled horizontally to read a single origin, so it is
+ * now paged by year.
+ */
+function UtmTable({ data, year }: { data: AcquisitionData; year: string }) {
   const [openSources, setOpenSources] = useState<Record<string, boolean>>({});
   const [openMediums, setOpenMediums] = useState<Record<string, boolean>>({});
 
-  const { months, monthLabels, bySource } = data;
+  const monthKeys = MONTHS_OF_YEAR.map((mm) => `${year}-${mm}`);
+
+  const sumOf = (byMonth: Record<string, number>) =>
+    monthKeys.reduce((total, mk) => total + (byMonth[mk] ?? 0), 0);
+
+  // Only origins that actually produced a subscription in this year.
+  const rows = data.bySource
+    .map((row) => ({ ...row, yearTotal: sumOf(row.byMonth) }))
+    .filter((row) => row.yearTotal > 0)
+    .sort((a, b) => b.yearTotal - a.yearTotal);
 
   const totalsByMonth: Record<string, number> = {};
   let grandTotal = 0;
-  for (const row of bySource) {
-    grandTotal += row.subscribers;
-    for (const mk of months) {
+  for (const row of rows) {
+    grandTotal += row.yearTotal;
+    for (const mk of monthKeys) {
       totalsByMonth[mk] = (totalsByMonth[mk] ?? 0) + (row.byMonth[mk] ?? 0);
     }
   }
 
-  const cell = (value: number, muted = false) =>
+  if (rows.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">
+        Nenhuma assinatura com origem identificada em {year}
+      </div>
+    );
+  }
+
+  const cell = (value: number, className: string) =>
     value > 0 ? (
-      <span className={muted ? "text-muted-foreground" : "text-foreground"}>{value}</span>
+      <span className={className}>{value}</span>
     ) : (
-      <span className="text-muted-foreground/30">—</span>
+      <span className="text-muted-foreground/25">—</span>
     );
 
   return (
@@ -53,24 +83,21 @@ function UtmTable({ data }: { data: AcquisitionData }) {
             <th className="text-left py-2 pr-4 pl-2 text-muted-foreground font-medium w-44 min-w-[10rem] sticky left-0 bg-card">
               Origem UTM
             </th>
-            {monthLabels.map((label, i) => (
+            {MONTH_ABBR.map((label) => (
               <th
-                key={months[i]}
-                className="text-right py-2 px-2 text-muted-foreground font-medium min-w-[4rem]"
+                key={label}
+                className="text-right py-2 px-2 text-muted-foreground font-medium min-w-[3rem] capitalize"
               >
                 {label}
               </th>
             ))}
-            <th className="text-right py-2 px-2 pl-4 text-muted-foreground font-medium min-w-[4rem]">
+            <th className="text-right py-2 px-2 pl-4 text-muted-foreground font-medium min-w-[3.5rem]">
               Total
-            </th>
-            <th className="text-right py-2 px-2 pl-4 text-muted-foreground font-medium min-w-[5rem]">
-              MRR
             </th>
           </tr>
         </thead>
         <tbody>
-          {bySource.map((row) => (
+          {rows.map((row) => (
             <Fragment key={row.source}>
               <tr
                 className="border-b border-border/40 hover:bg-sidebar-accent cursor-pointer"
@@ -86,95 +113,88 @@ function UtmTable({ data }: { data: AcquisitionData }) {
                     <span className="font-medium text-foreground truncate">{row.source}</span>
                   </div>
                 </td>
-                {months.map((mk) => (
+                {monthKeys.map((mk) => (
                   <td key={mk} className="text-right py-2 px-2 font-semibold tabular-nums">
-                    {cell(row.byMonth[mk] ?? 0)}
+                    {cell(row.byMonth[mk] ?? 0, "text-foreground")}
                   </td>
                 ))}
                 <td className="text-right py-2 px-2 pl-4 text-foreground font-bold tabular-nums">
-                  {row.subscribers}
-                </td>
-                <td className="text-right py-2 px-2 pl-4 text-foreground font-bold tabular-nums">
-                  {formatBRL(row.mrr)}
+                  {row.yearTotal}
                 </td>
               </tr>
 
               {openSources[row.source] &&
-                row.mediums.map((med) => {
-                  const medKey = `${row.source}::${med.medium}`;
-                  return (
-                    <Fragment key={medKey}>
-                      <tr
-                        className="border-b border-border/20 bg-sidebar/40 cursor-pointer hover:bg-sidebar/60"
-                        onClick={() => setOpenMediums((p) => ({ ...p, [medKey]: !p[medKey] }))}
-                      >
-                        <td className="py-1.5 pr-4 pl-7 sticky left-0 bg-sidebar/40 text-muted-foreground">
-                          <div className="flex items-center gap-1">
-                            {openMediums[medKey] ? (
-                              <ChevronDown className="w-2.5 h-2.5 shrink-0" />
-                            ) : (
-                              <ChevronRight className="w-2.5 h-2.5 shrink-0" />
-                            )}
-                            ↳ {med.medium}
-                          </div>
-                        </td>
-                        {months.map((mk) => (
-                          <td key={mk} className="text-right py-1.5 px-2 tabular-nums">
-                            {cell(med.byMonth[mk] ?? 0, true)}
+                row.mediums
+                  .map((med) => ({ ...med, yearTotal: sumOf(med.byMonth) }))
+                  .filter((med) => med.yearTotal > 0)
+                  .sort((a, b) => b.yearTotal - a.yearTotal)
+                  .map((med) => {
+                    const medKey = `${row.source}::${med.medium}`;
+                    return (
+                      <Fragment key={medKey}>
+                        <tr
+                          className="border-b border-border/20 bg-sidebar/40 cursor-pointer hover:bg-sidebar/60"
+                          onClick={() => setOpenMediums((p) => ({ ...p, [medKey]: !p[medKey] }))}
+                        >
+                          <td className="py-1.5 pr-4 pl-7 sticky left-0 bg-sidebar/40 text-muted-foreground">
+                            <div className="flex items-center gap-1">
+                              {openMediums[medKey] ? (
+                                <ChevronDown className="w-2.5 h-2.5 shrink-0" />
+                              ) : (
+                                <ChevronRight className="w-2.5 h-2.5 shrink-0" />
+                              )}
+                              ↳ {med.medium}
+                            </div>
                           </td>
-                        ))}
-                        <td className="text-right py-1.5 px-2 pl-4 text-muted-foreground font-semibold tabular-nums">
-                          {med.subscribers}
-                        </td>
-                        <td className="text-right py-1.5 px-2 pl-4 text-muted-foreground tabular-nums">
-                          {formatBRL(med.mrr)}
-                        </td>
-                      </tr>
+                          {monthKeys.map((mk) => (
+                            <td key={mk} className="text-right py-1.5 px-2 tabular-nums">
+                              {cell(med.byMonth[mk] ?? 0, "text-muted-foreground")}
+                            </td>
+                          ))}
+                          <td className="text-right py-1.5 px-2 pl-4 text-muted-foreground font-semibold tabular-nums">
+                            {med.yearTotal}
+                          </td>
+                        </tr>
 
-                      {openMediums[medKey] &&
-                        med.campaigns.map((camp) => (
-                          <tr
-                            key={`${medKey}::${camp.campaign}`}
-                            className="border-b border-border/10 bg-sidebar/25"
-                          >
-                            <td className="py-1 pr-4 pl-12 sticky left-0 bg-sidebar/25 text-muted-foreground/80 truncate">
-                              ↳↳ {camp.campaign}
-                            </td>
-                            {months.map((mk) => (
-                              <td
-                                key={mk}
-                                className="text-right py-1 px-2 text-muted-foreground/70 tabular-nums"
+                        {openMediums[medKey] &&
+                          med.campaigns
+                            .map((camp) => ({ ...camp, yearTotal: sumOf(camp.byMonth) }))
+                            .filter((camp) => camp.yearTotal > 0)
+                            .sort((a, b) => b.yearTotal - a.yearTotal)
+                            .map((camp) => (
+                              <tr
+                                key={`${medKey}::${camp.campaign}`}
+                                className="border-b border-border/10 bg-sidebar/25"
                               >
-                                {camp.byMonth[mk] ?? 0 ? camp.byMonth[mk] : "—"}
-                              </td>
+                                <td className="py-1 pr-4 pl-12 sticky left-0 bg-sidebar/25 text-muted-foreground/80 truncate">
+                                  ↳↳ {camp.campaign}
+                                </td>
+                                {monthKeys.map((mk) => (
+                                  <td key={mk} className="text-right py-1 px-2 tabular-nums">
+                                    {cell(camp.byMonth[mk] ?? 0, "text-muted-foreground/70")}
+                                  </td>
+                                ))}
+                                <td className="text-right py-1 px-2 pl-4 text-muted-foreground/80 font-medium tabular-nums">
+                                  {camp.yearTotal}
+                                </td>
+                              </tr>
                             ))}
-                            <td className="text-right py-1 px-2 pl-4 text-muted-foreground/80 font-medium tabular-nums">
-                              {camp.subscribers}
-                            </td>
-                            <td className="text-right py-1 px-2 pl-4 text-muted-foreground/80 tabular-nums">
-                              {formatBRL(camp.mrr)}
-                            </td>
-                          </tr>
-                        ))}
-                    </Fragment>
-                  );
-                })}
+                      </Fragment>
+                    );
+                  })}
             </Fragment>
           ))}
           <tr className="border-t border-border bg-sidebar/60">
             <td className="py-2 pr-4 pl-2 sticky left-0 bg-sidebar/60 font-bold text-foreground">
-              Total
+              Total {year}
             </td>
-            {months.map((mk) => (
+            {monthKeys.map((mk) => (
               <td key={mk} className="text-right py-2 px-2 font-bold text-foreground tabular-nums">
                 {totalsByMonth[mk] || "—"}
               </td>
             ))}
             <td className="text-right py-2 px-2 pl-4 font-bold text-foreground tabular-nums">
               {grandTotal}
-            </td>
-            <td className="text-right py-2 px-2 pl-4 font-bold text-foreground tabular-nums">
-              {formatBRL(data.mrrAttributed)}
             </td>
           </tr>
         </tbody>
@@ -187,6 +207,8 @@ export default function Acquisition() {
   const { dateRange } = usePeriod();
   const { start, end } = dateRange;
 
+  const [utmYear, setUtmYear] = useState<string | null>(null);
+
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["acquisition", start, end],
     queryFn: () => fetchAcquisition(start, end),
@@ -197,6 +219,9 @@ export default function Acquisition() {
   const errMsg = data?.message ?? (error as Error)?.message;
 
   const chartData = (d?.bySource ?? []).slice(0, 8);
+
+  const years = yearsFrom(d?.months ?? []);
+  const selectedYear = utmYear && years.includes(utmYear) ? utmYear : years[0];
 
   return (
     <div className="space-y-6">
@@ -293,11 +318,16 @@ export default function Acquisition() {
         title="Assinaturas por origem × mês"
         description="Clique na origem para abrir por mídia, e na mídia para abrir por campanha"
         loading={isLoading}
-        isEmpty={(d?.bySource.length ?? 0) === 0}
+        isEmpty={(d?.bySource.length ?? 0) === 0 || years.length === 0}
         emptyMessage="Sem dados de UTM para o período"
         height={200}
+        action={
+          years.length > 0 ? (
+            <YearTabs years={years} value={selectedYear ?? ""} onChange={setUtmYear} />
+          ) : undefined
+        }
       >
-        {d && <UtmTable data={d} />}
+        {d && selectedYear && <UtmTable data={d} year={selectedYear} />}
       </Panel>
     </div>
   );

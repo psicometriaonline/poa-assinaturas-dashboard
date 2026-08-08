@@ -123,6 +123,36 @@ export default function Traffic() {
         </div>
       )}
 
+      {d && !d.configured && (
+        <div className="rounded-lg border border-[#fab219]/40 bg-[#fab219]/10 p-4 text-sm">
+          <p className="font-medium text-[#fab219]">Umami não configurado</p>
+          <p className="text-muted-foreground mt-1">
+            Defina <code>UMAMI_API_TOKEN</code> e <code>UMAMI_WEBSITE_ID</code> nos secrets do
+            servidor. Sem isso a página fica zerada — não é ausência de visitas.
+          </p>
+        </div>
+      )}
+
+      {/* Chamadas ao Umami falhavam em silêncio e viravam zeros, o que era
+          indistinguível de um site sem visitas. Agora o motivo aparece. */}
+      {d && d.configured && d.errors.length > 0 && (
+        <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm">
+          <p className="font-medium text-destructive">
+            {d.errors.length === 1
+              ? "Uma consulta ao Umami falhou"
+              : `${d.errors.length} consultas ao Umami falharam`}{" "}
+            — os números abaixo estão incompletos
+          </p>
+          <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+            {d.errors.map((e) => (
+              <li key={e.source}>
+                <span className="text-foreground">{e.source}:</span> {e.message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <KPICard

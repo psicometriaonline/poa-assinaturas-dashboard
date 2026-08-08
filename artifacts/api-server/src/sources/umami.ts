@@ -1,5 +1,10 @@
 import { logger } from "../lib/logger";
 
+export function isUmamiConfigured(): boolean {
+  const { token, websiteId } = getConfig();
+  return Boolean(token && websiteId);
+}
+
 function getConfig() {
   const baseUrl = (process.env.UMAMI_BASE_URL || "https://api.umami.is").replace(/\/$/, "");
   const token = process.env.UMAMI_API_TOKEN || "";
@@ -81,16 +86,30 @@ export async function getWebsiteStats(startAt: number, endAt: number): Promise<U
   }
 }
 
+/**
+ * Picks the bucket size Umami can actually serve for the requested window.
+ * Asking for `unit=day` across several years makes the API return thousands of
+ * buckets (or reject the call outright), which is how the traffic page ended up
+ * blank whenever the period was set to "Todo período".
+ */
+export function pickUnit(startAt: number, endAt: number): "hour" | "day" | "month" {
+  const days = (endAt - startAt) / (24 * 60 * 60 * 1000);
+  if (days <= 2) return "hour";
+  if (days <= 120) return "day";
+  return "month";
+}
+
 export async function getPageViews(
   startAt: number,
-  endAt: number
+  endAt: number,
+  unit: "hour" | "day" | "month" = pickUnit(startAt, endAt)
 ): Promise<{ pageviews: UmamiPageView[]; sessions: UmamiPageView[] }> {
   const { websiteId } = getConfig();
   try {
     const data = await umamiFetch(`/websites/${websiteId}/pageviews`, {
       startAt: startAt.toString(),
       endAt: endAt.toString(),
-      unit: "day",
+      unit,
       timezone: "America/Sao_Paulo",
     });
     return data as { pageviews: UmamiPageView[]; sessions: UmamiPageView[] };

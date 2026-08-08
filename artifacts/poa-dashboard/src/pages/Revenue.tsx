@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   fetchRevenue,
@@ -11,6 +11,8 @@ import {
 import { usePeriod } from "@/context/PeriodContext";
 import { KPICard } from "@/components/KPICard";
 import { PageHeader, Panel, ErrorBanner } from "@/components/Panel";
+import { GranularityToggle } from "@/components/GranularityToggle";
+import { defaultGranularity, rollUpByYear, type Granularity } from "@/lib/time-grouping";
 import {
   CHROME,
   POLARITY,
@@ -51,11 +53,40 @@ export default function Revenue() {
   const errMsg = data?.message ?? (error as Error)?.message;
   const history = d?.history ?? [];
 
-  const movementData = history.map((h) => ({
-    month: h.month,
-    "Novo MRR": h.newMrr,
-    "MRR cancelado": -h.churnedMrr,
-  }));
+  const [granularity, setGranularity] = useState<Granularity | null>(null);
+  const effectiveGranularity = granularity ?? defaultGranularity(history.length);
+  const byYear = effectiveGranularity === "ano";
+
+  const movementData = useMemo(() => {
+    const rows = history.map((h) => ({
+      monthKey: h.monthKey,
+      label: h.month,
+      "Novo MRR": h.newMrr,
+      "MRR cancelado": -h.churnedMrr,
+    }));
+    return byYear ? rollUpByYear(rows, ["Novo MRR", "MRR cancelado"]) : rows;
+  }, [history, byYear]);
+
+  // MRR and ARR are stocks: rolled up to a year they take the closing value,
+  // never a sum. Billings is a flow and is summed.
+  const scaleData = useMemo(() => {
+    const rows = history.map((h) => ({
+      monthKey: h.monthKey,
+      label: h.month,
+      mrr: h.mrr,
+      arr: h.arr,
+    }));
+    return byYear ? rollUpByYear(rows, [], ["mrr", "arr"]) : rows;
+  }, [history, byYear]);
+
+  const billingsData = useMemo(() => {
+    const rows = history.map((h) => ({
+      monthKey: h.monthKey,
+      label: h.month,
+      billings: h.billings,
+    }));
+    return byYear ? rollUpByYear(rows, ["billings"]) : rows;
+  }, [history, byYear]);
 
   return (
     <div className="space-y-6">
@@ -140,10 +171,16 @@ export default function Revenue() {
 
       <Panel
         title={scale === "mrr" ? "Evolução do MRR" : "Evolução do ARR"}
-        description="Medido no último instante de cada mês, não acumulado"
+        description={
+          byYear
+            ? "Medido no fechamento de cada ano, não acumulado"
+            : "Medido no último instante de cada mês, não acumulado"
+        }
         loading={isLoading}
-        isEmpty={history.length === 0}
+        isEmpty={scaleData.length === 0}
         action={
+          <div className="flex items-center gap-2 shrink-0">
+            <GranularityToggle value={effectiveGranularity} onChange={setGranularity} />
           <div className="flex items-center gap-0.5 bg-secondary rounded-lg p-1 shrink-0">
             {(["mrr", "arr"] as ScaleTab[]).map((key) => (
               <button
@@ -159,10 +196,11 @@ export default function Revenue() {
               </button>
             ))}
           </div>
+          </div>
         }
       >
         <ResponsiveContainer width="100%" height={260}>
-          <AreaChart data={history} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+          <AreaChart data={scaleData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
             <defs>
               <linearGradient id="gradRevenue" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor={SERIES[0]} stopOpacity={0.3} />
@@ -170,7 +208,7 @@ export default function Revenue() {
               </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke={CHROME.grid} />
-            <XAxis dataKey="month" tick={axisTick} axisLine={false} tickLine={false} />
+            <XAxis dataKey="label" tick={axisTick} axisLine={false} tickLine={false} />
             <YAxis tick={axisTick} axisLine={false} tickLine={false} tickFormatter={formatBRLShort} />
             <Tooltip
               {...tooltipProps}
@@ -191,14 +229,15 @@ export default function Revenue() {
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 sm:gap-4">
         <Panel
           title="Movimentação de MRR"
-          description="Quanto entrou e quanto saiu em cada mês"
+          description={byYear ? "Quanto entrou e saiu em cada ano" : "Quanto entrou e saiu em cada mês"}
           loading={isLoading}
           isEmpty={movementData.length === 0}
+          action={<GranularityToggle value={effectiveGranularity} onChange={setGranularity} />}
         >
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={movementData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={CHROME.grid} />
-              <XAxis dataKey="month" tick={axisTick} axisLine={false} tickLine={false} />
+              <XAxis dataKey="label" tick={axisTick} axisLine={false} tickLine={false} />
               <YAxis
                 tick={axisTick}
                 axisLine={false}
@@ -231,16 +270,16 @@ export default function Revenue() {
         </Panel>
 
         <Panel
-          title="Caixa recebido por mês"
+          title={byYear ? "Caixa recebido por ano" : "Caixa recebido por mês"}
           description="Cobranças aprovadas — dinheiro que entrou, não receita reconhecida"
           loading={isLoading}
-          isEmpty={history.every((h) => h.billings === 0)}
+          isEmpty={billingsData.every((h) => h.billings === 0)}
           emptyMessage="Sem cobranças registradas via webhook no período"
         >
           <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={history} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+            <BarChart data={billingsData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={CHROME.grid} />
-              <XAxis dataKey="month" tick={axisTick} axisLine={false} tickLine={false} />
+              <XAxis dataKey="label" tick={axisTick} axisLine={false} tickLine={false} />
               <YAxis tick={axisTick} axisLine={false} tickLine={false} tickFormatter={formatBRLShort} />
               <Tooltip {...tooltipProps} formatter={(v: number) => [formatBRL(v), "Caixa"]} />
               <Bar

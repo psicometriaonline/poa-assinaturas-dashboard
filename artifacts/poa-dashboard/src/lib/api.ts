@@ -276,6 +276,12 @@ export interface UmamiMetric {
 }
 
 export interface TrafficData {
+  /** False when UMAMI_API_TOKEN / UMAMI_WEBSITE_ID are missing on the server. */
+  configured: boolean;
+  /** Bucket size Umami was queried with — day for short windows, month for long. */
+  unit: "hour" | "day" | "month";
+  /** Calls that failed. Empty array means the zeros are real, not a broken query. */
+  errors: Array<{ source: string; message: string }>;
   stats: {
     pageviews: number;
     uniques: number;
@@ -314,6 +320,34 @@ export interface LeadMapData {
 }
 
 export const fetchLeadMap = () => apiFetch<LeadMapData>("/leadmap");
+
+/* ── Data coverage (diagnóstico) ──────────────────────────────────────── */
+
+export interface DataCoverageData {
+  floor: string;
+  subscriptions: {
+    total: number;
+    firstAccession: string | null;
+    lastAccession: string | null;
+    beforeFloor: number;
+    mrrBeforeFloor: number;
+  };
+  byYear: Array<{
+    year: string;
+    subscriptions: number;
+    withPrice: number;
+    mrr: number;
+    excluded: boolean;
+  }>;
+  events: {
+    total: number;
+    firstEvent: string | null;
+    lastEvent: string | null;
+    byEvent: Array<{ event: string; count: number; first: string | null; last: string | null }>;
+  };
+}
+
+export const fetchDataCoverage = () => apiFetch<DataCoverageData>("/data-coverage");
 
 /* ── Admin ────────────────────────────────────────────────────────────── */
 

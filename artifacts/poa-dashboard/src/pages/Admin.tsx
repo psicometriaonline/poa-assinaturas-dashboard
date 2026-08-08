@@ -1,6 +1,99 @@
 import { useState, useRef } from "react";
-import { Upload, CheckCircle, AlertCircle, Loader2, ShieldCheck, LogOut, Mail, RefreshCw } from "lucide-react";
-import { formatBRL, formatNumber } from "@/lib/api";
+import { useQuery } from "@tanstack/react-query";
+import { Upload, CheckCircle, AlertCircle, Loader2, ShieldCheck, LogOut, Mail, RefreshCw, Database } from "lucide-react";
+import { fetchDataCoverage, formatBRL, formatNumber } from "@/lib/api";
+
+/**
+ * What the database actually holds, before the reporting floor is applied.
+ *
+ * The dashboard clamps every metric to the company's first selling month, so
+ * this panel is the only place the excluded rows remain visible — it is how you
+ * check whether the floor is still in the right place.
+ */
+function DataCoveragePanel() {
+  const { data, isLoading } = useQuery({
+    queryKey: ["data-coverage"],
+    queryFn: fetchDataCoverage,
+  });
+
+  const c = data?.data;
+
+  return (
+    <div className="bg-card border border-card-border rounded-xl p-6 space-y-4">
+      <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+        <Database className="w-4 h-4 text-blue-400" />
+        Cobertura de dados
+      </div>
+
+      {isLoading ? (
+        <div className="h-32 bg-muted rounded animate-pulse" />
+      ) : !c ? (
+        <p className="text-sm text-muted-foreground">Não foi possível apurar a cobertura.</p>
+      ) : (
+        <>
+          <p className="text-xs text-muted-foreground">
+            Métricas começam em <span className="text-foreground font-medium">{c.floor}</span>.
+            Registros anteriores continuam no banco, mas ficam fora de todos os gráficos.
+            Para mudar o corte, defina <code>METRICS_START_DATE</code> nos secrets.
+          </p>
+
+          <div className="grid grid-cols-2 gap-3 text-xs">
+            <div className="bg-background/40 rounded-lg p-3">
+              <p className="text-lg font-bold text-foreground">{formatNumber(c.subscriptions.total)}</p>
+              <p className="text-muted-foreground mt-0.5">assinaturas no banco</p>
+            </div>
+            <div className="bg-background/40 rounded-lg p-3">
+              <p className="text-lg font-bold text-foreground">
+                {formatNumber(c.subscriptions.beforeFloor)}
+              </p>
+              <p className="text-muted-foreground mt-0.5">
+                antes do corte ({formatBRL(c.subscriptions.mrrBeforeFloor)} de MRR ignorado)
+              </p>
+            </div>
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            Adesões de {c.subscriptions.firstAccession ?? "—"} a {c.subscriptions.lastAccession ?? "—"}
+            {" · "}
+            {formatNumber(c.events.total)} eventos de webhook
+            {c.events.firstEvent ? ` desde ${c.events.firstEvent}` : ""}
+          </p>
+
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-muted-foreground text-left border-b border-border">
+                <th className="pb-2 font-medium">Ano de adesão</th>
+                <th className="pb-2 font-medium text-right">Assinaturas</th>
+                <th className="pb-2 font-medium text-right">Com preço</th>
+                <th className="pb-2 font-medium text-right">MRR</th>
+                <th className="pb-2 font-medium text-right">No relatório?</th>
+              </tr>
+            </thead>
+            <tbody>
+              {c.byYear.map((y) => (
+                <tr key={y.year} className="border-b border-border/50">
+                  <td className={`py-2 ${y.excluded ? "text-muted-foreground/60" : "text-foreground"}`}>
+                    {y.year}
+                  </td>
+                  <td className="py-2 text-right tabular-nums">{formatNumber(y.subscriptions)}</td>
+                  <td className="py-2 text-right tabular-nums">{formatNumber(y.withPrice)}</td>
+                  <td className="py-2 text-right tabular-nums">{formatBRL(y.mrr)}</td>
+                  <td className="py-2 text-right">
+                    {y.excluded ? (
+                      <span className="text-[#fab219]">excluído</span>
+                    ) : (
+                      <span className="text-[#0ca30c]">incluído</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+    </div>
+  );
+}
 
 const ALLOWED_EMAILS = [
   "brunodamasio@psicometriaonline.com.br",
@@ -183,6 +276,8 @@ export default function Admin() {
           Sair ({authorizedEmail})
         </button>
       </div>
+
+      <DataCoveragePanel />
 
       <div className="bg-card border border-card-border rounded-xl p-6 space-y-5">
         <div className="flex items-center gap-2 text-sm font-medium text-foreground">
