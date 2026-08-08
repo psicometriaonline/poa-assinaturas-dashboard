@@ -1,13 +1,25 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, TrendingUp, Funnel, Globe, Users, Menu, X } from "lucide-react";
+import {
+  LayoutDashboard,
+  TrendingUp,
+  CreditCard,
+  UserMinus,
+  Megaphone,
+  Globe,
+  Users,
+  Menu,
+  X,
+} from "lucide-react";
 
 const navItems = [
   { label: "Visão Geral", href: "/", icon: LayoutDashboard },
-  { label: "Receita & Churn", href: "/revenue", icon: TrendingUp },
-  { label: "Funil", href: "/funnel", icon: Funnel },
+  { label: "Receita", href: "/revenue", icon: TrendingUp },
+  { label: "Assinaturas", href: "/subscriptions", icon: CreditCard },
+  { label: "Churn & Retenção", href: "/retention", icon: UserMinus },
+  { label: "Aquisição", href: "/acquisition", icon: Megaphone },
   { label: "Tráfego", href: "/traffic", icon: Globe },
-  { label: "Mapa do Lead", href: "/leadmap", icon: Users },
+  { label: "Perfil dos Assinantes", href: "/leadmap", icon: Users },
 ];
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
@@ -17,7 +29,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
     <>
       <div className="px-5 py-6 border-b border-sidebar-border">
         <h1 className="text-base font-bold text-foreground">Dashboard POA</h1>
-        <p className="text-xs text-muted-foreground mt-0.5">Métricas estratégicas</p>
+        <p className="text-xs text-muted-foreground mt-0.5">Assinaturas pagas</p>
       </div>
       <nav className="flex-1 px-3 py-4 space-y-1">
         {navItems.map((item) => {

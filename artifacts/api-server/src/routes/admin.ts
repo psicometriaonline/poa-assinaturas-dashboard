@@ -4,7 +4,9 @@ import * as XLSX from "xlsx";
 import { query } from "../lib/db";
 import { logger } from "../lib/logger";
 import { clearCache, deleteCacheKey } from "../cache";
-import { warmAcEmailCaches } from "../cron";
+import { warmAcContactCache } from "../cron";
+import { acquisitionCacheKey } from "../metrics/acquisition";
+import { detectPlanInterval, mrrFor } from "../lib/subscription-db";
 
 const router: IRouter = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -21,13 +23,6 @@ function requireAdminToken(req: Request, res: Response, next: () => void) {
     return;
   }
   next();
-}
-
-function detectInterval(planName: string): "ANNUAL" | "MONTHLY" | "SEMIANNUAL" {
-  const name = planName ?? "";
-  if (/mensal|monthly|pro mensal/i.test(name) || /^REC_/i.test(name)) return "MONTHLY";
-  if (/semestral/i.test(name)) return "SEMIANNUAL";
-  return "ANNUAL";
 }
 
 function parseExcelDate(raw: unknown): number | null {
@@ -117,12 +112,8 @@ router.post(
         const priceValue      = rawValue != null ? parseFloat(String(rawValue).replace(",", ".")) : null;
         const accessionDate   = parseExcelDate(row[iAccess]);
         const cancellationDate = parseExcelDate(row[iCancel]);
-        const planInterval    = detectInterval(planName);
-        const mrrContribution = priceValue != null
-          ? planInterval === "ANNUAL" ? Math.round((priceValue / 12) * 100) / 100
-          : planInterval === "SEMIANNUAL" ? Math.round((priceValue / 6) * 100) / 100
-          : priceValue
-          : null;
+        const planInterval    = detectPlanInterval(planName);
+        const mrrContribution = mrrFor(priceValue, planInterval);
 
         if (!subscriberCode) { skipped++; continue; }
 
@@ -209,25 +200,15 @@ router.post("/clear-cache", requireAdminToken, (_req: Request, res: Response) =>
 });
 
 router.post("/refresh-ac-cache", requireAdminToken, async (_req: Request, res: Response) => {
-  deleteCacheKey("ac:tag-emails:401");
-  deleteCacheKey("ac:list-emails:30");
+  deleteCacheKey(acquisitionCacheKey());
 
-  logger.info("Admin: forcing AC email cache refresh (tag-401 + list-30)");
+  logger.info("Admin: forcing AC contact cache refresh (members list)");
 
   try {
-    const { tagCount, listCount } = await warmAcEmailCaches();
-
-    res.json({
-      error: false,
-      data: {
-        tagId: "401",
-        listId: "30",
-        tagEmailCount: tagCount,
-        listEmailCount: listCount,
-      },
-    });
+    const contactCount = await warmAcContactCache();
+    res.json({ error: false, data: { contactCount } });
   } catch (err) {
-    logger.error({ err }, "Admin: AC email cache refresh failed");
+    logger.error({ err }, "Admin: AC contact cache refresh failed");
     res.status(500).json({
       error: true,
       message: err instanceof Error ? err.message : "Erro ao atualizar cache AC.",

@@ -1,211 +1,280 @@
 import { query } from "../lib/db";
-import { CHURN_EVENTS } from "../lib/churn-events";
+import {
+  BASE_CTES,
+  MONTHS_CTE,
+  formatMonthKey,
+  int,
+  num,
+  pct,
+  round2,
+} from "../lib/subscription-sql";
+
+export interface RevenueHistoryPoint {
+  month: string;
+  monthKey: string;
+  /** MRR at the last instant of the month (point-in-time, not a running sum). */
+  mrr: number;
+  arr: number;
+  arpu: number;
+  activeSubs: number;
+  newSubs: number;
+  churnedSubs: number;
+  newMrr: number;
+  churnedMrr: number;
+  netNewMrr: number;
+  /** Cash actually collected in the month (Hotmart PURCHASE_APPROVED). */
+  billings: number;
+  /** Gross revenue retention: MRR kept from the base that started the month. */
+  grr: number;
+  /** MRR growth vs. the previous month, in %. */
+  growthRate: number;
+}
 
 export interface RevenueMetrics {
   mrr: number;
   arr: number;
   arpu: number;
-  totalSubscribers: number;
-  totalRevenue: number;
-  byPlan: Array<{ plan: string; subscribers: number; revenue: number; percentage: number }>;
-  history: Array<{
-    month: string;
-    monthKey: string;
+  activeSubscribers: number;
+  /** MRR at the start of the selected window, for a like-for-like delta. */
+  mrrAtStart: number;
+  mrrChange: number;
+  mrrChangePct: number;
+  newMrr: number;
+  churnedMrr: number;
+  netNewMrr: number;
+  /** (Novo MRR) / (MRR cancelado) — above 1 means the base is growing. */
+  quickRatio: number | null;
+  grr: number;
+  billings: number;
+  /** Share of MRR locked into annual contracts — the low-churn part of the base. */
+  annualMrrShare: number;
+  byPlan: Array<{
+    plan: string;
+    interval: string;
+    subscribers: number;
     mrr: number;
     arr: number;
     arpu: number;
-    newSubs: number;
-    churnedSubs: number;
-    mrrLost: number;
-    totalSubs: number;
-    churnRate: number;
-    byPlan: Record<string, number>;
+    percentage: number;
   }>;
+  byInterval: Array<{ label: string; subscribers: number; mrr: number; percentage: number }>;
+  history: RevenueHistoryPoint[];
+  dataQuality: {
+    totalSubscriptions: number;
+    withoutPrice: number;
+    /** Non-active subscribers with no reliable end date — excluded from the timeline. */
+    undatedExits: number;
+  };
 }
 
-function formatMonthKey(monthKey: string): string {
-  const [year, month] = monthKey.split("-");
-  const d = new Date(parseInt(year, 10), parseInt(month, 10) - 1, 1);
-  const names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  return `${names[d.getMonth()]}/${year.slice(2)}`;
+const INTERVAL_LABELS: Record<string, string> = {
+  ANNUAL: "Anual",
+  SEMIANNUAL: "Semestral",
+  MONTHLY: "Mensal",
+};
+
+function intervalLabel(raw: string): string {
+  return INTERVAL_LABELS[(raw ?? "").toUpperCase()] ?? raw ?? "Outro";
 }
 
-export async function getRevenueMetrics(_startDate: Date, _endDate: Date): Promise<RevenueMetrics> {
-  const [summaryRows, byPlanRows, historyRows, mrrRemovalRows, churnRows] = await Promise.all([
-    query<{ mrr: string; count: string }>(
-      `SELECT
-         COALESCE(SUM(
-           CASE WHEN mrr_contribution IS NOT NULL THEN mrr_contribution
-                WHEN plan_interval = 'ANNUAL' THEN ROUND(price_value / 12, 2)
-                ELSE price_value END
-         ), 0) AS mrr,
-         COUNT(*) AS count
-       FROM hotmart_subscriptions
-       WHERE status = 'ACTIVE' AND price_value IS NOT NULL`
+interface MonthRow {
+  month_key: string;
+  mrr_end: string;
+  mrr_start: string;
+  active_end: string;
+  new_subs: string;
+  churned_subs: string;
+  new_mrr: string;
+  churned_mrr: string;
+}
+
+export async function getRevenueMetrics(startDate: Date, endDate: Date): Promise<RevenueMetrics> {
+  const params = [startDate.toISOString(), endDate.toISOString()];
+
+  const [monthRows, snapshotRows, byPlanRows, billingRows, qualityRows] = await Promise.all([
+    // Point-in-time monthly series. Every figure is a direct measurement of the
+    // base at a given instant, so the curve can never drift away from the live
+    // snapshot the way the old cumulative add/subtract reconstruction did.
+    query<MonthRow>(
+      `WITH ${BASE_CTES},${MONTHS_CTE}
+       SELECT
+         mo.month_key,
+         COALESCE(SUM(s.mrr) FILTER (
+           WHERE s.started_at < mo.m_end AND (s.ended_at IS NULL OR s.ended_at >= mo.m_end)
+         ), 0) AS mrr_end,
+         COALESCE(SUM(s.mrr) FILTER (
+           WHERE s.started_at < mo.m AND (s.ended_at IS NULL OR s.ended_at >= mo.m)
+         ), 0) AS mrr_start,
+         COUNT(*) FILTER (
+           WHERE s.started_at < mo.m_end AND (s.ended_at IS NULL OR s.ended_at >= mo.m_end)
+         ) AS active_end,
+         COUNT(*) FILTER (
+           WHERE s.started_at >= mo.m AND s.started_at < mo.m_end
+         ) AS new_subs,
+         COUNT(*) FILTER (
+           WHERE s.ended_at >= mo.m AND s.ended_at < mo.m_end
+         ) AS churned_subs,
+         COALESCE(SUM(s.mrr) FILTER (
+           WHERE s.started_at >= mo.m AND s.started_at < mo.m_end
+         ), 0) AS new_mrr,
+         COALESCE(SUM(s.mrr) FILTER (
+           WHERE s.ended_at >= mo.m AND s.ended_at < mo.m_end
+         ), 0) AS churned_mrr
+       FROM months mo
+       LEFT JOIN timeline s ON TRUE
+       GROUP BY mo.month_key, mo.m
+       ORDER BY mo.m ASC`,
+      params
     ),
-    query<{ plan_name: string; count: string; mrr: string }>(
-      `SELECT
-         COALESCE(plan_name, 'Sem plano') AS plan_name,
-         COUNT(*) AS count,
-         COALESCE(SUM(
-           CASE WHEN mrr_contribution IS NOT NULL THEN mrr_contribution
-                WHEN plan_interval = 'ANNUAL' THEN ROUND(price_value / 12, 2)
-                ELSE price_value END
-         ), 0) AS mrr
-       FROM hotmart_subscriptions
-       WHERE status = 'ACTIVE' AND price_value IS NOT NULL
-       GROUP BY plan_name
+
+    query<{ mrr: string; subs: string; annual_mrr: string }>(
+      `WITH ${BASE_CTES}
+       SELECT
+         COALESCE(SUM(mrr), 0) AS mrr,
+         COUNT(*) AS subs,
+         COALESCE(SUM(mrr) FILTER (WHERE plan_interval = 'ANNUAL'), 0) AS annual_mrr
+       FROM subs
+       WHERE ended_at IS NULL AND status = 'ACTIVE'`
+    ),
+
+    query<{ plan_name: string; plan_interval: string; subs: string; mrr: string }>(
+      `WITH ${BASE_CTES}
+       SELECT plan_name, plan_interval, COUNT(*) AS subs, COALESCE(SUM(mrr), 0) AS mrr
+       FROM subs
+       WHERE ended_at IS NULL AND status = 'ACTIVE'
+       GROUP BY plan_name, plan_interval
        ORDER BY mrr DESC`
     ),
-    query<{ month: string; month_key: string; new_subs: string; mrr_added: string }>(
+
+    // Cash in, not recognised revenue. With annual plans dominating, MRR alone
+    // hides when the money actually lands — this is the complementary view.
+    query<{ month_key: string; billed: string }>(
       `SELECT
-         TO_CHAR(DATE_TRUNC('month', TO_TIMESTAMP(accession_date / 1000)), 'Mon/YY') AS month,
-         TO_CHAR(DATE_TRUNC('month', TO_TIMESTAMP(accession_date / 1000)), 'YYYY-MM') AS month_key,
-         COUNT(*) AS new_subs,
-         COALESCE(SUM(
-           CASE WHEN mrr_contribution IS NOT NULL THEN mrr_contribution
-                WHEN plan_interval = 'ANNUAL' THEN ROUND(price_value / 12, 2)
-                ELSE price_value END
-         ), 0) AS mrr_added
-       FROM hotmart_subscriptions
-       WHERE accession_date IS NOT NULL
-         AND price_value IS NOT NULL
-       GROUP BY 1, 2
-       ORDER BY 2 ASC`
-    ),
-    // MRR removed (money out): derived from the subscriptions table itself (one row
-    // per subscriber, no double-counting) so the cumulative MRR curve reconciles
-    // exactly with the live "MRR Atual" snapshot. A subscriber stops contributing MRR
-    // when status <> 'ACTIVE' (cancelled, inactive AND past-due/delinquent — none of
-    // these are paying). The exit month uses cancellation_date when present, otherwise
-    // the last event timestamp. Only subscribers that were added (accession_date
-    // present) are subtracted, so SUM(added) - SUM(removed) == active MRR.
-    query<{ month_key: string; mrr_lost: string }>(
-      `SELECT
-         TO_CHAR(DATE_TRUNC('month', COALESCE(TO_TIMESTAMP(cancellation_date / 1000), last_event_at)), 'YYYY-MM') AS month_key,
-         COALESCE(SUM(
-           CASE WHEN mrr_contribution IS NOT NULL THEN mrr_contribution
-                WHEN plan_interval = 'ANNUAL' THEN ROUND(price_value / 12, 2)
-                ELSE price_value END
-         ), 0) AS mrr_lost
-       FROM hotmart_subscriptions
-       WHERE status <> 'ACTIVE'
-         AND accession_date IS NOT NULL
-         AND price_value IS NOT NULL
-       GROUP BY 1
-       ORDER BY 1 ASC`
-    ),
-    // Cancellation COUNT (churnedSubs / churnRate): kept on the webhook-event
-    // definition (CHURN_EVENTS) so it stays consistent with the dedicated churn
-    // metric. This intentionally differs from the MRR removal above — a past-due
-    // subscriber stops paying (removed from MRR) but is NOT counted as a cancellation.
-    query<{ month_key: string; cancelled: string }>(
-      `WITH monthly_cancels AS (
-         SELECT DISTINCT ON (
-           TO_CHAR(DATE_TRUNC('month', received_at), 'YYYY-MM'), subscriber_code
-         )
-           TO_CHAR(DATE_TRUNC('month', received_at), 'YYYY-MM') AS month_key,
-           subscriber_code
+         to_char(
+           date_trunc('month', to_timestamp(COALESCE(approved_ms, creation_ms) / 1000.0)
+             AT TIME ZONE 'America/Sao_Paulo'),
+           'YYYY-MM'
+         ) AS month_key,
+         COALESCE(SUM(value), 0) AS billed
+       FROM (
+         SELECT
+           CASE WHEN (payload->'data'->'purchase'->>'approved_date') ~ '^[0-9]+$'
+                THEN (payload->'data'->'purchase'->>'approved_date')::bigint END AS approved_ms,
+           CASE WHEN (payload->>'creation_date') ~ '^[0-9]+$'
+                THEN (payload->>'creation_date')::bigint END AS creation_ms,
+           CASE WHEN (payload->'data'->'purchase'->'price'->>'value') ~ '^[0-9]+(\\.[0-9]+)?$'
+                THEN (payload->'data'->'purchase'->'price'->>'value')::numeric END AS value
          FROM hotmart_webhook_events
-         WHERE event = ANY($1::text[])
-         ORDER BY
-           TO_CHAR(DATE_TRUNC('month', received_at), 'YYYY-MM'),
-           subscriber_code,
-           received_at ASC
-       )
-       SELECT month_key, COUNT(*) AS cancelled
-       FROM monthly_cancels
-       GROUP BY month_key
-       ORDER BY month_key ASC`,
-      [[...CHURN_EVENTS]]
+         WHERE event = 'PURCHASE_APPROVED'
+       ) t
+       WHERE value IS NOT NULL AND COALESCE(approved_ms, creation_ms) IS NOT NULL
+       GROUP BY 1`
+    ),
+
+    query<{ total: string; without_price: string; undated_exits: string }>(
+      `WITH ${BASE_CTES}
+       SELECT
+         COUNT(*) AS total,
+         COUNT(*) FILTER (WHERE mrr = 0) AS without_price,
+         COUNT(*) FILTER (WHERE status <> 'ACTIVE' AND ended_at IS NULL) AS undated_exits
+       FROM subs`
     ),
   ]);
 
-  const mrr = parseFloat(summaryRows[0]?.mrr ?? "0");
-  const totalSubscribers = parseInt(summaryRows[0]?.count ?? "0", 10);
-  const arr = Math.round(mrr * 12 * 100) / 100;
-  const arpu = totalSubscribers > 0 ? Math.round((mrr / totalSubscribers) * 100) / 100 : 0;
+  const mrr = round2(num(snapshotRows[0]?.mrr));
+  const activeSubscribers = int(snapshotRows[0]?.subs);
+  const annualMrr = num(snapshotRows[0]?.annual_mrr);
+  const arr = round2(mrr * 12);
+  const arpu = activeSubscribers > 0 ? round2(mrr / activeSubscribers) : 0;
+
+  const billingsByMonth = new Map(billingRows.map((r) => [r.month_key, num(r.billed)]));
+
+  let prevMrr: number | null = null;
+  const history: RevenueHistoryPoint[] = monthRows.map((r) => {
+    const monthMrr = round2(num(r.mrr_end));
+    const mrrStart = num(r.mrr_start);
+    const churnedMrr = round2(num(r.churned_mrr));
+    const activeSubs = int(r.active_end);
+
+    const point: RevenueHistoryPoint = {
+      month: formatMonthKey(r.month_key),
+      monthKey: r.month_key,
+      mrr: monthMrr,
+      arr: round2(monthMrr * 12),
+      arpu: activeSubs > 0 ? round2(monthMrr / activeSubs) : 0,
+      activeSubs,
+      newSubs: int(r.new_subs),
+      churnedSubs: int(r.churned_subs),
+      newMrr: round2(num(r.new_mrr)),
+      churnedMrr,
+      netNewMrr: round2(num(r.new_mrr) - churnedMrr),
+      billings: round2(billingsByMonth.get(r.month_key) ?? 0),
+      grr: mrrStart > 0 ? pct(mrrStart - churnedMrr, mrrStart) : 0,
+      growthRate: prevMrr && prevMrr > 0 ? pct(monthMrr - prevMrr, prevMrr) : 0,
+    };
+    prevMrr = monthMrr;
+    return point;
+  });
+
+  const newMrr = round2(history.reduce((sum, h) => sum + h.newMrr, 0));
+  const churnedMrr = round2(history.reduce((sum, h) => sum + h.churnedMrr, 0));
+  const billings = round2(history.reduce((sum, h) => sum + h.billings, 0));
+  const mrrAtStart = round2(num(monthRows[0]?.mrr_start));
+  const mrrAtEnd = history.length > 0 ? history[history.length - 1].mrr : mrr;
 
   const byPlan = byPlanRows.map((r) => {
-    const rev = parseFloat(r.mrr);
+    const planMrr = round2(num(r.mrr));
+    const subs = int(r.subs);
     return {
       plan: r.plan_name,
-      subscribers: parseInt(r.count, 10),
-      revenue: rev,
-      percentage: mrr > 0 ? Math.round((rev / mrr) * 1000) / 10 : 0,
+      interval: intervalLabel(r.plan_interval),
+      subscribers: subs,
+      mrr: planMrr,
+      arr: round2(planMrr * 12),
+      arpu: subs > 0 ? round2(planMrr / subs) : 0,
+      percentage: pct(planMrr, mrr),
     };
   });
 
-  const acquisitionByMonth = new Map<string, { month: string; newSubs: number; mrrAdded: number }>(
-    historyRows.map((r) => [
-      r.month_key,
-      {
-        month: r.month,
-        newSubs: parseInt(r.new_subs, 10),
-        mrrAdded: parseFloat(r.mrr_added),
-      },
-    ])
-  );
-
-  // Money out (MRR) — drives the cumulative MRR curve so it reconciles with the KPI.
-  const mrrLostByMonth = new Map<string, number>(
-    mrrRemovalRows.map((r) => [r.month_key, parseFloat(r.mrr_lost)])
-  );
-
-  // Cancellation count — drives churnedSubs / churnRate (webhook-event definition).
-  const churnCountByMonth = new Map<string, number>(
-    churnRows.map((r) => [r.month_key, parseInt(r.cancelled, 10)])
-  );
-
-  const allMonthKeys = Array.from(
-    new Set([
-      ...acquisitionByMonth.keys(),
-      ...mrrLostByMonth.keys(),
-      ...churnCountByMonth.keys(),
-    ])
-  ).sort();
-
-  let cumulativeSubs = 0;
-  let cumulativeMrr = 0;
-  let totalMrrAdded = 0;
-
-  const history = allMonthKeys.map((monthKey) => {
-    const acq = acquisitionByMonth.get(monthKey);
-    const newSubs = acq?.newSubs ?? 0;
-    const mrrAdded = acq?.mrrAdded ?? 0;
-    const churnedSubs = churnCountByMonth.get(monthKey) ?? 0;
-    const mrrLost = mrrLostByMonth.get(monthKey) ?? 0;
-
-    const startSubs = cumulativeSubs;
-    const base = startSubs + churnedSubs;
-    const churnRate = base > 0 ? Math.round((churnedSubs / base) * 10000) / 100 : 0;
-    cumulativeSubs += newSubs - churnedSubs;
-
-    cumulativeMrr = Math.round((cumulativeMrr + mrrAdded - mrrLost) * 100) / 100;
-    totalMrrAdded += mrrAdded;
-
-    return {
-      month: acq?.month ?? formatMonthKey(monthKey),
-      monthKey,
-      mrr: cumulativeMrr,
-      arr: Math.round(cumulativeMrr * 12 * 100) / 100,
-      arpu: cumulativeSubs > 0 ? Math.round((cumulativeMrr / cumulativeSubs) * 100) / 100 : 0,
-      newSubs,
-      churnedSubs,
-      mrrLost,
-      totalSubs: cumulativeSubs,
-      churnRate,
-      byPlan: {},
-    };
-  });
+  const intervalTotals = new Map<string, { subscribers: number; mrr: number }>();
+  for (const row of byPlanRows) {
+    const label = intervalLabel(row.plan_interval);
+    const entry = intervalTotals.get(label) ?? { subscribers: 0, mrr: 0 };
+    entry.subscribers += int(row.subs);
+    entry.mrr += num(row.mrr);
+    intervalTotals.set(label, entry);
+  }
+  const byInterval = Array.from(intervalTotals.entries())
+    .map(([label, v]) => ({
+      label,
+      subscribers: v.subscribers,
+      mrr: round2(v.mrr),
+      percentage: pct(v.mrr, mrr),
+    }))
+    .sort((a, b) => b.mrr - a.mrr);
 
   return {
     mrr,
     arr,
     arpu,
-    totalSubscribers,
-    totalRevenue: Math.round(totalMrrAdded * 100) / 100,
+    activeSubscribers,
+    mrrAtStart,
+    mrrChange: round2(mrrAtEnd - mrrAtStart),
+    mrrChangePct: mrrAtStart > 0 ? pct(mrrAtEnd - mrrAtStart, mrrAtStart) : 0,
+    newMrr,
+    churnedMrr,
+    netNewMrr: round2(newMrr - churnedMrr),
+    quickRatio: churnedMrr > 0 ? round2(newMrr / churnedMrr) : null,
+    grr: mrrAtStart > 0 ? pct(mrrAtStart - churnedMrr, mrrAtStart) : 0,
+    billings,
+    annualMrrShare: pct(annualMrr, mrr),
     byPlan,
+    byInterval,
     history,
+    dataQuality: {
+      totalSubscriptions: int(qualityRows[0]?.total),
+      withoutPrice: int(qualityRows[0]?.without_price),
+      undatedExits: int(qualityRows[0]?.undated_exits),
+    },
   };
 }

@@ -6,7 +6,9 @@ import { GlobalPeriodSelector } from "@/components/GlobalPeriodSelector";
 import { PeriodProvider } from "@/context/PeriodContext";
 import Overview from "@/pages/Overview";
 import Revenue from "@/pages/Revenue";
-import Funnel from "@/pages/Funnel";
+import Subscriptions from "@/pages/Subscriptions";
+import Retention from "@/pages/Retention";
+import Acquisition from "@/pages/Acquisition";
 import Traffic from "@/pages/Traffic";
 import LeadMap from "@/pages/LeadMap";
 import Admin from "@/pages/Admin";
@@ -47,7 +49,9 @@ function Layout() {
           <Switch>
             <Route path="/" component={Overview} />
             <Route path="/revenue" component={Revenue} />
-            <Route path="/funnel" component={Funnel} />
+            <Route path="/subscriptions" component={Subscriptions} />
+            <Route path="/retention" component={Retention} />
+            <Route path="/acquisition" component={Acquisition} />
             <Route path="/traffic" component={Traffic} />
             <Route path="/leadmap" component={LeadMap} />
             <Route path="/admin" component={Admin} />

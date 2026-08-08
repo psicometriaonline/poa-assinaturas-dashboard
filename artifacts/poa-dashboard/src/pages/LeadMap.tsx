@@ -133,7 +133,7 @@ export default function LeadMap() {
   return (
     <div className="space-y-6 max-w-[1400px]">
       <div>
-        <h1 className="text-xl font-bold text-foreground">Mapa do Lead</h1>
+        <h1 className="text-xl font-bold text-foreground">Perfil dos Assinantes</h1>
         <p className="text-sm text-muted-foreground">Perfil demográfico e acadêmico dos membros — dados da planilha de cadastro</p>
       </div>
 

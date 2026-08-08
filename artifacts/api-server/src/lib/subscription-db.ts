@@ -1,44 +1,57 @@
-import { query, queryOne } from "./db";
+import { query } from "./db";
 import { logger } from "./logger";
 import type { HotmartWebhookPayload } from "./hotmart-webhook-types";
 
-export interface DbSubscription {
-  subscriber_code: string;
-  subscription_id: string | null;
-  status: string;
-  product_id: string | null;
-  product_name: string | null;
-  plan_name: string | null;
-  plan_id: string | null;
-  subscriber_name: string | null;
-  subscriber_email: string | null;
-  accession_date: number | null;
-  cancellation_date: number | null;
-  date_next_charge: number | null;
-  price_value: number | null;
-  price_currency: string | null;
-  last_event: string | null;
-  last_event_at: string;
-}
+export type PlanInterval = "ANNUAL" | "MONTHLY" | "SEMIANNUAL";
 
-export interface SubscriptionSummary {
-  total: number;
-  active: number;
-  inactive: number;
-  cancelled: number;
-  delayed: number;
-  byProduct: Record<string, { name: string; count: number; active: number }>;
-  newThisMonth: number;
-  cancelledThisMonth: number;
-  mrr: number;
-}
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const DAYS_PER_MONTH = 30.4375;
 
-export function detectPlanInterval(planName: string): "ANNUAL" | "MONTHLY" | "SEMIANNUAL" {
+/**
+ * Guesses the billing cycle from the plan's name.
+ *
+ * Defaulting to ANNUAL divides the price by 12, so a mislabelled monthly plan
+ * silently understates MRR twelvefold. Prefer `detectPlanIntervalFromDates`
+ * whenever the payload carries real dates — this is only the last resort.
+ */
+export function detectPlanInterval(planName: string): PlanInterval {
   const name = planName ?? "";
   if (/mensal|monthly|pro mensal/i.test(name) || /^REC_/i.test(name)) return "MONTHLY";
-  if (/semestral/i.test(name)) return "SEMIANNUAL";
+  if (/semestral|semiannual/i.test(name)) return "SEMIANNUAL";
+  if (/trimestral|quarterly/i.test(name)) return "SEMIANNUAL";
   return "ANNUAL";
 }
+
+/**
+ * Derives the billing cycle from the distance between the approved charge and
+ * the next scheduled charge — the only signal Hotmart gives us that reflects
+ * what the customer is actually billed, rather than how the offer was named.
+ */
+export function detectPlanIntervalFromDates(
+  chargedAtMs: number | null | undefined,
+  nextChargeMs: number | null | undefined
+): PlanInterval | null {
+  if (!chargedAtMs || !nextChargeMs || nextChargeMs <= chargedAtMs) return null;
+  const months = (nextChargeMs - chargedAtMs) / MS_PER_DAY / DAYS_PER_MONTH;
+  if (months >= 10) return "ANNUAL";
+  if (months >= 4.5) return "SEMIANNUAL";
+  if (months >= 0.5) return "MONTHLY";
+  return null;
+}
+
+export function mrrFor(priceValue: number | null, interval: PlanInterval): number | null {
+  if (priceValue == null) return null;
+  const divisor = interval === "ANNUAL" ? 12 : interval === "SEMIANNUAL" ? 6 : 1;
+  return Math.round((priceValue / divisor) * 100) / 100;
+}
+
+const CANCELLATION_EVENTS = [
+  "SUBSCRIPTION_CANCELLATION",
+  "PURCHASE_CANCELED",
+  "PURCHASE_REFUNDED",
+  "PURCHASE_CHARGEBACK",
+  "PURCHASE_EXPIRED",
+];
 
 export async function upsertSubscriptionFromWebhook(
   payload: HotmartWebhookPayload,
@@ -48,8 +61,8 @@ export async function upsertSubscriptionFromWebhook(
   const sub = data.subscription;
   // SUBSCRIPTION_CANCELLATION: subscriber at data.subscriber.code
   // PURCHASE_*: subscriber at data.subscription.subscriber.code
-  // Some PURCHASE_APPROVED payloads (e.g. Free Trial first payment) may omit data.subscription
-  // entirely — fall back to data.subscriber.code in that case.
+  // Some PURCHASE_APPROVED payloads may omit data.subscription entirely —
+  // fall back to data.subscriber.code in that case.
   const subscriberCode = sub?.subscriber?.code ?? data.subscriber?.code;
 
   if (!subscriberCode) {
@@ -69,31 +82,29 @@ export async function upsertSubscriptionFromWebhook(
   const purchaseDate = data.purchase?.approved_date ?? payload.creation_date ?? null;
   const priceValue = data.purchase?.price?.value ?? data.actual_recurrence_value ?? null;
   const priceCurrency = data.purchase?.price?.currency_code ?? null;
+  const dateNextCharge = data.date_next_charge ?? null;
 
   const isSwitchPlan = event === "SWITCH_PLAN";
   const mappedStatus = sub?.status ?? mapEventToStatus(event);
   const status = isSwitchPlan ? "ACTIVE" : mappedStatus;
 
-  const cancellationDate =
-    ["SUBSCRIPTION_CANCELLATION", "PURCHASE_CANCELED", "PURCHASE_REFUNDED", "PURCHASE_CHARGEBACK", "PURCHASE_EXPIRED"].includes(event)
-      ? payload.creation_date
-      : null;
+  const cancellationDate = CANCELLATION_EVENTS.includes(event) ? payload.creation_date : null;
 
-  const planInterval = detectPlanInterval(planName ?? "");
-  const mrrContribution = priceValue != null
-    ? planInterval === "ANNUAL" ? Math.round((priceValue / 12) * 100) / 100
-    : planInterval === "SEMIANNUAL" ? Math.round((priceValue / 6) * 100) / 100
-    : priceValue
-    : null;
+  // Dates first, plan name only as a fallback.
+  const planInterval =
+    detectPlanIntervalFromDates(data.purchase?.approved_date ?? payload.creation_date, dateNextCharge) ??
+    detectPlanInterval(planName ?? "");
+  const mrrContribution = mrrFor(priceValue, planInterval);
 
   await query(
     `INSERT INTO hotmart_subscriptions (
         subscriber_code, status, product_id, product_name,
         plan_name, plan_id, subscriber_name, subscriber_email,
-        accession_date, cancellation_date, price_value, price_currency,
+        accession_date, cancellation_date, date_next_charge,
+        price_value, price_currency,
         plan_interval, mrr_contribution,
         last_event, original_event, last_event_at, updated_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$15,NOW(),NOW())
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$16,NOW(),NOW())
       ON CONFLICT (subscriber_code) DO UPDATE SET
         status = EXCLUDED.status,
         product_id = COALESCE(EXCLUDED.product_id, hotmart_subscriptions.product_id),
@@ -103,6 +114,7 @@ export async function upsertSubscriptionFromWebhook(
         subscriber_name = COALESCE(EXCLUDED.subscriber_name, hotmart_subscriptions.subscriber_name),
         subscriber_email = COALESCE(EXCLUDED.subscriber_email, hotmart_subscriptions.subscriber_email),
         cancellation_date = COALESCE(EXCLUDED.cancellation_date, hotmart_subscriptions.cancellation_date),
+        date_next_charge = COALESCE(EXCLUDED.date_next_charge, hotmart_subscriptions.date_next_charge),
         price_value = COALESCE(EXCLUDED.price_value, hotmart_subscriptions.price_value),
         price_currency = COALESCE(EXCLUDED.price_currency, hotmart_subscriptions.price_currency),
         plan_interval = COALESCE(EXCLUDED.plan_interval, hotmart_subscriptions.plan_interval),
@@ -121,6 +133,7 @@ export async function upsertSubscriptionFromWebhook(
       buyerEmail,
       purchaseDate,
       cancellationDate,
+      dateNextCharge,
       priceValue,
       priceCurrency,
       planInterval,
@@ -129,7 +142,7 @@ export async function upsertSubscriptionFromWebhook(
     ]
   );
 
-  logger.info({ subscriberCode, status, event, productId }, "Subscription upserted from webhook");
+  logger.info({ subscriberCode, status, event, productId, planInterval }, "Subscription upserted from webhook");
 }
 
 function mapEventToStatus(event: string): string {
@@ -150,74 +163,4 @@ function mapEventToStatus(event: string): string {
     default:
       return "ACTIVE";
   }
-}
-
-export async function getDbSubscriptionSummary(
-  startMs?: number,
-  endMs?: number
-): Promise<SubscriptionSummary> {
-  const now = Date.now();
-  const monthStart = startMs ?? new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime();
-  const monthEnd = endMs ?? now;
-
-  const [totals, byProduct, newThisMonth, cancelledThisMonth, mrrRows] = await Promise.all([
-    query<{ status: string; count: string }>(
-      `SELECT status, COUNT(*) as count FROM hotmart_subscriptions GROUP BY status`
-    ),
-    query<{ product_id: string; product_name: string; status: string; count: string }>(
-      `SELECT product_id, product_name, status, COUNT(*) as count
-       FROM hotmart_subscriptions GROUP BY product_id, product_name, status`
-    ),
-    queryOne<{ count: string }>(
-      `SELECT COUNT(*) as count FROM hotmart_subscriptions
-       WHERE accession_date >= $1 AND accession_date <= $2`,
-      [monthStart, monthEnd]
-    ),
-    queryOne<{ count: string }>(
-      `SELECT COUNT(*) as count FROM hotmart_subscriptions
-       WHERE cancellation_date >= $1 AND cancellation_date <= $2`,
-      [monthStart, monthEnd]
-    ),
-    query<{ sum: string }>(
-      `SELECT COALESCE(SUM(CASE WHEN mrr_contribution IS NOT NULL THEN mrr_contribution
-                               WHEN plan_interval = 'ANNUAL' THEN ROUND(price_value / 12, 2)
-                               ELSE price_value END), 0) as sum
-       FROM hotmart_subscriptions WHERE status = 'ACTIVE' AND price_value IS NOT NULL`
-    ),
-  ]);
-
-  const statusMap: Record<string, number> = {};
-  for (const row of totals) {
-    statusMap[row.status] = parseInt(row.count, 10);
-  }
-
-  const productMap: Record<string, { name: string; count: number; active: number }> = {};
-  for (const row of byProduct) {
-    const pid = row.product_id ?? "unknown";
-    if (!productMap[pid]) {
-      productMap[pid] = { name: row.product_name ?? pid, count: 0, active: 0 };
-    }
-    const c = parseInt(row.count, 10);
-    productMap[pid].count += c;
-    if (row.status === "ACTIVE") productMap[pid].active += c;
-  }
-
-  return {
-    total: Object.values(statusMap).reduce((a, b) => a + b, 0),
-    active: statusMap["ACTIVE"] ?? 0,
-    inactive: statusMap["INACTIVE"] ?? 0,
-    cancelled: statusMap["CANCELLED"] ?? 0,
-    delayed: statusMap["DELAYED"] ?? 0,
-    byProduct: productMap,
-    newThisMonth: parseInt(newThisMonth?.count ?? "0", 10),
-    cancelledThisMonth: parseInt(cancelledThisMonth?.count ?? "0", 10),
-    mrr: parseFloat(mrrRows[0]?.sum ?? "0"),
-  };
-}
-
-export async function getTotalActiveFromDb(): Promise<number> {
-  const row = await queryOne<{ count: string }>(
-    `SELECT COUNT(*) as count FROM hotmart_subscriptions WHERE status = 'ACTIVE'`
-  );
-  return parseInt(row?.count ?? "0", 10);
 }

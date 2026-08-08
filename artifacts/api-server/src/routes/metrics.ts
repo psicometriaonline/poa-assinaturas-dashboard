@@ -1,12 +1,12 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { withCache } from "../cache";
+import { getOverviewMetrics } from "../metrics/overview";
 import { getRevenueMetrics } from "../metrics/revenue";
 import { getChurnMetrics } from "../metrics/churn";
-import { getConversionMetrics, type ConversionMetrics } from "../metrics/conversion";
+import { getRetentionMetrics } from "../metrics/retention";
+import { getSubscriptionsMetrics } from "../metrics/subscriptions";
 import { getAcquisitionMetrics } from "../metrics/acquisition";
 import { getLeadMapMetrics } from "../metrics/leadmap";
-import { getPlanAcquisitionMetrics } from "../metrics/plan-acquisition";
-import { getLeadsMetrics, takeLeadsSnapshot, getLeadsSnapshots } from "../metrics/leads";
 import { query } from "../lib/db";
 import {
   getWebsiteStats,
@@ -44,157 +44,52 @@ function errorResponse(message: string) {
   return { error: true, message, data: null };
 }
 
-router.get("/overview", async (req: Request, res: Response) => {
-  try {
+/**
+ * Wraps a metric in the standard cache + error envelope. Every subscription
+ * metric is keyed by the selected period, so the global period selector now
+ * actually changes the numbers instead of being silently ignored.
+ */
+function metricRoute<T>(
+  name: string,
+  errorMessage: string,
+  loader: (startDate: Date, endDate: Date) => Promise<T>,
+  ttlMs?: number
+) {
+  return async (req: Request, res: Response): Promise<void> => {
     const { startDate, endDate } = parseDateRange(req);
-    const cacheKey = `overview:${startDate.toISOString()}:${endDate.toISOString()}`;
-    const data = await withCache(cacheKey, async () => {
-      const startMs = startDate.getTime();
-      const endMs = endDate.getTime();
+    const cacheKey = `${name}:${startDate.toISOString()}:${endDate.toISOString()}`;
+    try {
+      const data = await withCache(cacheKey, () => loader(startDate, endDate), ttlMs);
+      res.json({ error: false, data });
+    } catch (err) {
+      req.log.error({ err }, `Error fetching ${name}`);
+      res
+        .status(500)
+        .json(errorResponse(err instanceof Error ? err.message : errorMessage));
+    }
+  };
+}
 
-      const [statusRows, mrrRow, newRow, cancelRow, funnelMetrics] = await Promise.all([
-        query<{ status: string; count: string }>(
-          `SELECT status, COUNT(*) as count FROM hotmart_subscriptions GROUP BY status`
-        ),
-        query<{ sum: string }>(
-          `SELECT COALESCE(SUM(
-             CASE WHEN mrr_contribution IS NOT NULL THEN mrr_contribution
-                  WHEN plan_interval = 'ANNUAL' THEN ROUND(price_value / 12, 2)
-                  ELSE price_value END
-           ), 0) as sum
-           FROM hotmart_subscriptions WHERE status = 'ACTIVE' AND price_value IS NOT NULL`
-        ),
-        query<{ count: string }>(
-          `SELECT COUNT(*) as count
-           FROM hotmart_subscriptions
-           WHERE accession_date IS NOT NULL
-             AND accession_date >= $1
-             AND accession_date <= $2`,
-          [startMs, endMs]
-        ),
-        query<{ count: string }>(
-          `SELECT COUNT(*) as count
-           FROM hotmart_subscriptions
-           WHERE cancellation_date IS NOT NULL
-             AND cancellation_date >= $1
-             AND cancellation_date <= $2`,
-          [startMs, endMs]
-        ),
-        getConversionMetrics(startDate, endDate).catch((): ConversionMetrics | null => null),
-      ]);
-
-      const statusMap: Record<string, number> = {};
-      for (const row of statusRows) {
-        statusMap[row.status] = parseInt(row.count, 10);
-      }
-      const activeSubscribers = statusMap["ACTIVE"] ?? 0;
-      const pastDueSubscribers = statusMap["PAST_DUE"] ?? 0;
-      const inactiveSubscribers = Object.entries(statusMap)
-        .filter(([s]) => s !== "ACTIVE" && s !== "PAST_DUE")
-        .reduce((sum, [, c]) => sum + c, 0);
-      const totalSubscribers = Object.values(statusMap).reduce((a, b) => a + b, 0);
-
-      const mrr = parseFloat(mrrRow[0]?.sum ?? "0");
-      const arr = Math.round(mrr * 12 * 100) / 100;
-      const newSubscribers = parseInt(newRow[0]?.count ?? "0", 10);
-      const cancellations = parseInt(cancelRow[0]?.count ?? "0", 10);
-      const netNewSubscribers = newSubscribers - cancellations;
-      const churnRate = totalSubscribers > 0
-        ? parseFloat(((cancellations / totalSubscribers) * 100).toFixed(2))
-        : 0;
-      const conversionRate = funnelMetrics?.conversionRate ?? 0;
-
-      return {
-        mrr,
-        arr,
-        mrrChange: null,
-        activeSubscribers,
-        pastDueSubscribers,
-        inactiveSubscribers,
-        totalSubscribers,
-        newSubscribers,
-        cancellations,
-        netNewSubscribers,
-        churnRate,
-        conversionRate,
-      };
-    });
-    res.json({ error: false, data });
-  } catch (err) {
-    req.log.error({ err }, "Error fetching overview");
-    res.status(500).json(errorResponse(err instanceof Error ? err.message : "Erro ao buscar overview"));
-  }
-});
-
-router.get("/revenue", async (req: Request, res: Response) => {
-  const { startDate, endDate } = parseDateRange(req);
-  const cacheKey = `revenue:${startDate.toISOString()}:${endDate.toISOString()}`;
-  try {
-    const data = await withCache(cacheKey, () => getRevenueMetrics(startDate, endDate));
-    res.json({ error: false, data });
-  } catch (err) {
-    req.log.error({ err }, "Error fetching revenue");
-    res.status(500).json(errorResponse(err instanceof Error ? err.message : "Erro ao buscar receita"));
-  }
-});
-
-router.get("/churn", async (req: Request, res: Response) => {
-  const { startDate, endDate } = parseDateRange(req);
-  const cacheKey = `churn:${startDate.toISOString()}:${endDate.toISOString()}`;
-  try {
-    const data = await withCache(cacheKey, () => getChurnMetrics(startDate, endDate));
-    res.json({ error: false, data });
-  } catch (err) {
-    req.log.error({ err }, "Error fetching churn");
-    res.status(500).json(errorResponse(err instanceof Error ? err.message : "Erro ao buscar churn"));
-  }
-});
-
-router.get("/funnel", async (req: Request, res: Response) => {
-  const { startDate, endDate } = parseDateRange(req);
-  const cacheKey = `funnel:${startDate.toISOString()}:${endDate.toISOString()}`;
-  try {
-    const data = await withCache(cacheKey, () => getConversionMetrics(startDate, endDate));
-    res.json({ error: false, data });
-  } catch (err) {
-    req.log.error({ err }, "Error fetching funnel");
-    res.status(500).json(errorResponse(err instanceof Error ? err.message : "Erro ao buscar funil"));
-  }
-});
-
-router.get("/plan-acquisition", async (req: Request, res: Response) => {
-  const { startDate, endDate } = parseDateRange(req);
-  const cacheKey = `plan-acquisition:${startDate.toISOString()}:${endDate.toISOString()}`;
-  try {
-    const data = await withCache(cacheKey, () =>
-      getPlanAcquisitionMetrics(startDate.getTime(), endDate.getTime())
-    );
-    res.json({ error: false, data });
-  } catch (err) {
-    req.log.error({ err }, "Error fetching plan acquisition");
-    res.status(500).json(errorResponse(err instanceof Error ? err.message : "Erro ao buscar aquisição por plano"));
-  }
-});
-
-router.get("/acquisition", async (req: Request, res: Response) => {
-  const { startDate, endDate } = parseDateRange(req);
-  const cacheKey = `acquisition:${startDate.toISOString()}:${endDate.toISOString()}`;
-  try {
-    const data = await withCache(cacheKey, () => getAcquisitionMetrics(startDate, endDate));
-    res.json({ error: false, data });
-  } catch (err) {
-    req.log.error({ err }, "Error fetching acquisition");
-    res.status(500).json(errorResponse(err instanceof Error ? err.message : "Erro ao buscar aquisição"));
-  }
-});
+router.get("/overview", metricRoute("overview", "Erro ao buscar visão geral", getOverviewMetrics));
+router.get("/revenue", metricRoute("revenue", "Erro ao buscar receita", getRevenueMetrics));
+router.get("/churn", metricRoute("churn", "Erro ao buscar churn", getChurnMetrics));
+router.get("/retention", metricRoute("retention", "Erro ao buscar retenção", getRetentionMetrics));
+router.get(
+  "/subscriptions",
+  metricRoute("subscriptions", "Erro ao buscar assinaturas", getSubscriptionsMetrics)
+);
+router.get(
+  "/acquisition",
+  metricRoute("acquisition", "Erro ao buscar aquisição", getAcquisitionMetrics)
+);
 
 router.get("/leadmap", async (_req: Request, res: Response) => {
   try {
     const data = await withCache("leadmap", () => getLeadMapMetrics(), 30 * 60 * 1000);
     res.json({ error: false, data });
   } catch (err) {
-    _req.log.error({ err }, "Error fetching lead map");
-    res.status(500).json(errorResponse(err instanceof Error ? err.message : "Erro ao buscar mapa do lead"));
+    _req.log.error({ err }, "Error fetching member profile");
+    res.status(500).json(errorResponse(err instanceof Error ? err.message : "Erro ao buscar perfil dos assinantes"));
   }
 });
 
@@ -326,49 +221,6 @@ router.get("/debug/subscriptions", async (_req: Request, res: Response) => {
     res.json({ source: "local-db", grandTotal, byStatus });
   } catch (err) {
     res.status(500).json({ error: String(err) });
-  }
-});
-
-router.get("/leads", async (req: Request, res: Response) => {
-  try {
-    const startParam = (req.query.start as string) || "2015-01-01";
-    const endParam = (req.query.end as string) || new Date().toISOString().split("T")[0];
-
-    const startDate = new Date(`${startParam}T00:00:00.000Z`);
-    const endDate = new Date(`${endParam}T23:59:59.999Z`);
-
-    const cacheKey = `leads:${startParam}:${endParam}`;
-    const data = await withCache(cacheKey, () => getLeadsMetrics(startDate, endDate));
-    res.json({ error: false, data });
-  } catch (err) {
-    req.log.error({ err }, "Error fetching leads");
-    res.status(500).json(errorResponse(err instanceof Error ? err.message : "Erro ao carregar métricas de leads"));
-  }
-});
-
-router.get("/leads/snapshots", async (req: Request, res: Response) => {
-  try {
-    const limit = Math.min(parseInt((req.query.limit as string) || "90"), 365);
-    const data = await getLeadsSnapshots(limit);
-    res.json({ error: false, data });
-  } catch (err) {
-    req.log.error({ err }, "Error fetching leads snapshots");
-    res.status(500).json(errorResponse(err instanceof Error ? err.message : "Erro ao buscar snapshots"));
-  }
-});
-
-router.post("/leads/snapshot", async (req: Request, res: Response) => {
-  const token = req.headers["x-admin-token"];
-  if (token !== process.env.ADMIN_SECRET) {
-    res.status(401).json({ error: true, message: "Unauthorized" });
-    return;
-  }
-  try {
-    const snap = await takeLeadsSnapshot();
-    res.json({ error: false, data: snap });
-  } catch (err) {
-    req.log.error({ err }, "Error taking leads snapshot");
-    res.status(500).json(errorResponse(err instanceof Error ? err.message : "Erro ao gerar snapshot"));
   }
 });
 

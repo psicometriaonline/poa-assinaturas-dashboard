@@ -1,9 +1,0 @@
-export const CHURN_EVENTS = [
-  "SUBSCRIPTION_CANCELLATION",
-  "PURCHASE_CANCELED",
-  "PURCHASE_REFUNDED",
-  "PURCHASE_CHARGEBACK",
-  "PURCHASE_EXPIRED",
-] as const;
-
-export type ChurnEvent = (typeof CHURN_EVENTS)[number];

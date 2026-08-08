@@ -21,10 +21,7 @@ interface ImportResult {
 }
 
 interface AcCacheResult {
-  tagId: string;
-  listId: string;
-  tagEmailCount: number;
-  listEmailCount: number;
+  contactCount: number;
 }
 
 function EmailGate({ onAccess }: { onAccess: (email: string) => void }) {
@@ -268,8 +265,8 @@ export default function Admin() {
           Cache ActiveCampaign
         </div>
         <p className="text-xs text-muted-foreground">
-          Força a atualização imediata dos e-mails da tag 401 e lista 30 no cache do servidor.
-          Usa o token de administrador informado acima.
+          Força a atualização imediata dos contatos da lista de assinantes usada na atribuição
+          de origem (página Aquisição). Usa o token de administrador informado acima.
         </p>
 
         <button
@@ -306,15 +303,11 @@ export default function Admin() {
               <CheckCircle className="w-4 h-4 text-green-400" />
               <p className="text-sm font-semibold text-green-300">Cache atualizado com sucesso</p>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-background/40 rounded-lg p-3 text-center">
-                <p className="text-lg font-bold text-foreground">{formatNumber(acResult.tagEmailCount)}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">E-mails tag {acResult.tagId}</p>
-              </div>
-              <div className="bg-background/40 rounded-lg p-3 text-center">
-                <p className="text-lg font-bold text-foreground">{formatNumber(acResult.listEmailCount)}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">E-mails lista {acResult.listId}</p>
-              </div>
+            <div className="bg-background/40 rounded-lg p-3 text-center">
+              <p className="text-lg font-bold text-foreground">{formatNumber(acResult.contactCount)}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                contatos da lista de assinantes em cache
+              </p>
             </div>
           </div>
         )}

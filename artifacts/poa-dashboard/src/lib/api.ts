@@ -1,109 +1,274 @@
 const BASE = "/api/metrics";
 
-async function apiFetch<T>(url: string): Promise<{ error: boolean; message?: string; data: T | null }> {
-  const res = await fetch(url);
+export interface ApiResponse<T> {
+  error: boolean;
+  message?: string;
+  data: T | null;
+}
+
+async function apiFetch<T>(path: string, start?: string, end?: string): Promise<ApiResponse<T>> {
+  const params = new URLSearchParams();
+  if (start) params.set("start", start);
+  if (end) params.set("end", end);
+  const qs = params.toString();
+  const res = await fetch(`${BASE}${path}${qs ? `?${qs}` : ""}`);
   if (!res.ok) {
     return { error: true, message: `HTTP ${res.status}`, data: null };
   }
   return res.json();
 }
 
-export async function fetchOverview(start?: string, end?: string) {
-  const params = new URLSearchParams();
-  if (start) params.set("start", start);
-  if (end) params.set("end", end);
-  const qs = params.toString();
-  return apiFetch<{
+/* ── Overview ─────────────────────────────────────────────────────────── */
+
+export interface OverviewData {
+  mrr: number;
+  arr: number;
+  arpu: number;
+  mrrAtStart: number;
+  mrrChange: number;
+  mrrChangePct: number;
+  newMrr: number;
+  churnedMrr: number;
+  netNewMrr: number;
+  billings: number;
+  annualMrrShare: number;
+  quickRatio: number | null;
+  activeSubscribers: number;
+  newSubscribers: number;
+  cancellations: number;
+  netNewSubscribers: number;
+  avgTenureMonths: number;
+  churnRate: number;
+  annualizedChurnRate: number;
+  revenueChurnRate: number;
+  nrr: number;
+  grr: number;
+  ltv: number | null;
+  voluntaryCancellations: number;
+  involuntaryCancellations: number;
+  delinquentSubscribers: number;
+  delinquentMrr: number;
+  renewals30d: { subscribers: number; contractValue: number };
+  history: Array<{
+    month: string;
+    monthKey: string;
     mrr: number;
     arr: number;
-    mrrChange: number | null;
-    activeSubscribers: number;
-    pastDueSubscribers: number;
-    inactiveSubscribers: number;
-    totalSubscribers: number;
-    newSubscribers: number;
-    cancellations: number;
-    netNewSubscribers: number;
-    churnRate: number;
-    conversionRate: number;
-  }>(`${BASE}/overview${qs ? `?${qs}` : ""}`);
+    activeSubs: number;
+    newSubs: number;
+    churnedSubs: number;
+    netNewMrr: number;
+  }>;
+  dataQuality: { totalSubscriptions: number; withoutPrice: number; undatedExits: number };
 }
 
-export async function fetchWebhookStatus() {
-  return apiFetch<{
-    events: Array<{ event: string; count: string }>;
-    subscriptions: Array<{ status: string; count: string }>;
-  }>("/api/webhooks/hotmart/status");
-}
+export const fetchOverview = (start: string, end: string) =>
+  apiFetch<OverviewData>("/overview", start, end);
 
-export async function fetchRevenue(start?: string, end?: string) {
-  const now = new Date();
-  const defaultStart = new Date(now.getFullYear(), now.getMonth() - 11, 1).toISOString().split("T")[0];
-  const defaultEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split("T")[0];
-  start = start ?? defaultStart;
-  end = end ?? defaultEnd;
-  return apiFetch<{
+/* ── Revenue ──────────────────────────────────────────────────────────── */
+
+export interface RevenueData {
+  mrr: number;
+  arr: number;
+  arpu: number;
+  activeSubscribers: number;
+  mrrAtStart: number;
+  mrrChange: number;
+  mrrChangePct: number;
+  newMrr: number;
+  churnedMrr: number;
+  netNewMrr: number;
+  quickRatio: number | null;
+  grr: number;
+  billings: number;
+  annualMrrShare: number;
+  byPlan: Array<{
+    plan: string;
+    interval: string;
+    subscribers: number;
     mrr: number;
     arr: number;
     arpu: number;
-    totalSubscribers: number;
-    totalRevenue: number;
-    byPlan: Array<{ plan: string; subscribers: number; revenue: number; percentage: number }>;
-    history: Array<{
-      month: string;
-      monthKey: string;
-      mrr: number;
-      arr: number;
-      arpu: number;
-      newSubs: number;
-      churnedSubs: number;
-      totalSubs: number;
-      churnRate: number;
-      byPlan: Record<string, number>;
-    }>;
-  }>(`${BASE}/revenue?start=${start}&end=${end}`);
+    percentage: number;
+  }>;
+  byInterval: Array<{ label: string; subscribers: number; mrr: number; percentage: number }>;
+  history: Array<{
+    month: string;
+    monthKey: string;
+    mrr: number;
+    arr: number;
+    arpu: number;
+    activeSubs: number;
+    newSubs: number;
+    churnedSubs: number;
+    newMrr: number;
+    churnedMrr: number;
+    netNewMrr: number;
+    billings: number;
+    grr: number;
+    growthRate: number;
+  }>;
+  dataQuality: { totalSubscriptions: number; withoutPrice: number; undatedExits: number };
 }
 
-export async function fetchChurn(start: string, end: string) {
-  return apiFetch<{
-    totalCancellations: number;
-    voluntaryChurn: number;
-    involuntaryChurn: number;
+export const fetchRevenue = (start: string, end: string) =>
+  apiFetch<RevenueData>("/revenue", start, end);
+
+/* ── Churn ────────────────────────────────────────────────────────────── */
+
+export interface ChurnData {
+  totalCancellations: number;
+  voluntaryCancellations: number;
+  involuntaryCancellations: number;
+  mrrLost: number;
+  churnRate: number;
+  annualizedChurnRate: number;
+  revenueChurnRate: number;
+  nrr: number;
+  grr: number;
+  avgLifetimeMonths: number;
+  ltv: number | null;
+  delinquent: { subscribers: number; mrr: number };
+  history: Array<{
+    month: string;
+    monthKey: string;
+    activeStart: number;
+    newSubs: number;
+    churned: number;
+    voluntary: number;
+    involuntary: number;
     churnRate: number;
-    history: Array<{ month: string; total: number; voluntary: number; involuntary: number; churnRate: number }>;
-  }>(`${BASE}/churn?start=${start}&end=${end}`);
+    mrrStart: number;
+    mrrChurned: number;
+    mrrNew: number;
+    revenueChurnRate: number;
+    netRevenueChurnRate: number;
+    nrr: number;
+  }>;
+  byPlan: Array<{
+    plan: string;
+    interval: string;
+    activeNow: number;
+    churned: number;
+    churnRate: number;
+    mrrLost: number;
+  }>;
+  tenureAtChurn: Array<{ bucket: string; count: number; percentage: number }>;
 }
 
-export async function fetchFunnel(start: string, end: string) {
-  return apiFetch<{
-    totalRegistrations: number;
-    totalConversions: number;
-    conversionRate: number;
-    avgDaysToConversion: number;
-    distributionByRange: { "0-7": number; "8-14": number; "15-30": number; "+30": number };
-    byChannel: Array<{ channel: string; registrations: number; conversions: number; rate: number }>;
-    history: Array<{ month: string; registrations: number; conversions: number; conversionRate: number }>;
-  }>(`${BASE}/funnel?start=${start}&end=${end}`);
+export const fetchChurn = (start: string, end: string) => apiFetch<ChurnData>("/churn", start, end);
+
+/* ── Retention (cohorts) ──────────────────────────────────────────────── */
+
+export interface RetentionData {
+  cohorts: Array<{
+    cohortKey: string;
+    cohort: string;
+    size: number;
+    initialMrr: number;
+    cells: Array<{
+      offset: number;
+      retained: number;
+      retentionRate: number;
+      mrrRetentionRate: number;
+    }>;
+  }>;
+  maxOffset: number;
+  benchmarks: Array<{
+    offset: number;
+    label: string;
+    retentionRate: number;
+    cohortsCounted: number;
+  }>;
+  loyalBaseShare: number;
 }
 
-export interface PlanAcquisitionData {
-  byPlan: Array<{ plan: string; interval: string; count: number }>;
-  byInterval: Array<{ label: string; count: number }>;
-  history: Array<{ month: string; plans: Record<string, number> }>;
+export const fetchRetention = (start: string, end: string) =>
+  apiFetch<RetentionData>("/retention", start, end);
+
+/* ── Subscriptions ────────────────────────────────────────────────────── */
+
+export interface SubscriptionsData {
+  activeSubscribers: number;
+  mrr: number;
+  arpu: number;
+  newSubscribers: number;
+  churnedSubscribers: number;
+  netNewSubscribers: number;
+  avgTenureMonths: number;
+  byStatus: Array<{ status: string; label: string; subscribers: number; mrr: number }>;
+  byPlan: Array<{
+    plan: string;
+    interval: string;
+    subscribers: number;
+    mrr: number;
+    percentage: number;
+    arpu: number;
+  }>;
+  byInterval: Array<{ label: string; subscribers: number; mrr: number; percentage: number }>;
+  byProduct: Array<{ product: string; subscribers: number; mrr: number }>;
+  tenureBuckets: Array<{ bucket: string; subscribers: number; mrr: number; percentage: number }>;
+  acquisitionHistory: Array<{
+    month: string;
+    monthKey: string;
+    total: number;
+    plans: Record<string, number>;
+  }>;
   topPlans: string[];
-  totalConversions: number;
+  renewals: Array<{
+    window: string;
+    days: number;
+    subscribers: number;
+    mrr: number;
+    contractValue: number;
+  }>;
+  upcomingRenewalsByMonth: Array<{
+    month: string;
+    monthKey: string;
+    subscribers: number;
+    contractValue: number;
+  }>;
+  delinquent: { subscribers: number; mrr: number; percentageOfBase: number };
 }
 
-export async function fetchPlanAcquisition(start: string, end: string) {
-  return apiFetch<PlanAcquisitionData>(`${BASE}/plan-acquisition?start=${start}&end=${end}`);
+export const fetchSubscriptions = (start: string, end: string) =>
+  apiFetch<SubscriptionsData>("/subscriptions", start, end);
+
+/* ── Acquisition (UTM origin of paying subscriptions) ─────────────────── */
+
+export interface AcquisitionData {
+  totalSubscriptions: number;
+  attributed: number;
+  attributionRate: number;
+  mrrAttributed: number;
+  available: boolean;
+  months: string[];
+  monthLabels: string[];
+  bySource: Array<{
+    source: string;
+    subscribers: number;
+    mrr: number;
+    percentage: number;
+    byMonth: Record<string, number>;
+    mediums: Array<{
+      medium: string;
+      subscribers: number;
+      mrr: number;
+      byMonth: Record<string, number>;
+      campaigns: Array<{
+        campaign: string;
+        subscribers: number;
+        mrr: number;
+        byMonth: Record<string, number>;
+      }>;
+    }>;
+  }>;
 }
 
-export async function fetchAcquisition(start: string, end: string) {
-  return apiFetch<{
-    byUtmSource: Array<{ source: string; registrations: number }>;
-    byTrafficChannel: Array<{ channel: string; sessions: number }>;
-  }>(`${BASE}/acquisition?start=${start}&end=${end}`);
-}
+export const fetchAcquisition = (start: string, end: string) =>
+  apiFetch<AcquisitionData>("/acquisition", start, end);
+
+/* ── Traffic (Umami) ──────────────────────────────────────────────────── */
 
 export interface UmamiMetric {
   x: string;
@@ -129,78 +294,10 @@ export interface TrafficData {
   weeklyHourly: number[][];
 }
 
-export async function fetchTraffic(start: string, end: string) {
-  return apiFetch<TrafficData>(`${BASE}/traffic?start=${start}&end=${end}`);
-}
+export const fetchTraffic = (start: string, end: string) =>
+  apiFetch<TrafficData>("/traffic", start, end);
 
-export interface LeadsData {
-  totalLeads: number;
-  totalConversions: number;
-  conversionRate: number;
-  avgDaysToConvert: number;
-  daily: Array<{ date: string; leads: number }>;
-  monthly: Array<{
-    month: string;
-    monthKey: string;
-    leads: number;
-    conversions: number;
-    conversionRate: number;
-  }>;
-  bySource: Array<{
-    source: string;
-    leads: number;
-    conversions: number;
-    rate: number;
-    mediums: Array<{ medium: string; leads: number; conversions: number }>;
-  }>;
-  tableMonths: string[];
-  tableData: Array<{
-    source: string;
-    total: number;
-    byMonth: Record<string, number>;
-    mediums: Array<{
-      medium: string;
-      total: number;
-      byMonth: Record<string, number>;
-      campaigns: Array<{
-        campaign: string;
-        total: number;
-        byMonth: Record<string, number>;
-        contents: Array<{
-          content: string;
-          total: number;
-          byMonth: Record<string, number>;
-        }>;
-      }>;
-    }>;
-  }>;
-}
-
-export async function fetchLeads(start: string, end: string) {
-  return apiFetch<LeadsData>(`${BASE}/leads?start=${start}&end=${end}`);
-}
-
-export interface LeadsSnapshot {
-  id: number;
-  snapshot_date: string;
-  total_free_trial: number;
-  total_alunos_poa: number;
-  converted: number;
-  conversion_rate: number;
-  created_at: string;
-}
-
-export async function fetchLeadsSnapshots(limit = 90) {
-  return apiFetch<LeadsSnapshot[]>(`${BASE}/leads/snapshots?limit=${limit}`);
-}
-
-export async function triggerLeadsSnapshot(adminSecret: string) {
-  const res = await fetch(`${BASE}/leads/snapshot`, {
-    method: "POST",
-    headers: { "x-admin-token": adminSecret },
-  });
-  return res.json();
-}
+/* ── Member profile ───────────────────────────────────────────────────── */
 
 export interface LeadMapData {
   totalWithProfile: number;
@@ -216,21 +313,50 @@ export interface LeadMapData {
   topInstituicoes: Array<{ label: string; value: number }>;
 }
 
-export async function fetchLeadMap() {
-  return apiFetch<LeadMapData>(`${BASE}/leadmap`);
+export const fetchLeadMap = () => apiFetch<LeadMapData>("/leadmap");
+
+/* ── Admin ────────────────────────────────────────────────────────────── */
+
+export async function fetchWebhookStatus() {
+  const res = await fetch("/api/webhooks/hotmart/status");
+  if (!res.ok) return { error: true, message: `HTTP ${res.status}`, data: null };
+  return res.json();
 }
+
+/* ── Formatting ───────────────────────────────────────────────────────── */
 
 export function formatBRL(value: number): string {
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",
     currency: "BRL",
+    maximumFractionDigits: 0,
   }).format(value);
 }
 
+export function formatBRLExact(value: number): string {
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
+}
+
+/** Compact axis label: R$12,5 mil / R$1,2 mi. */
+export function formatBRLShort(value: number): string {
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000) return `R$${(value / 1_000_000).toFixed(1).replace(".", ",")} mi`;
+  if (abs >= 1_000) return `R$${(value / 1_000).toFixed(0)} mil`;
+  return `R$${value.toFixed(0)}`;
+}
+
 export function formatPct(value: number): string {
-  return `${value.toFixed(1)}%`;
+  return `${value.toFixed(1).replace(".", ",")}%`;
 }
 
 export function formatNumber(value: number): string {
   return new Intl.NumberFormat("pt-BR").format(value);
+}
+
+export function formatMonths(value: number): string {
+  if (value >= 12) {
+    const years = value / 12;
+    return `${years.toFixed(1).replace(".", ",")} anos`;
+  }
+  return `${value.toFixed(1).replace(".", ",")} meses`;
 }

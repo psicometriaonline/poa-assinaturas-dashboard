@@ -1,55 +1,38 @@
 import cron from "node-cron";
-import { takeLeadsSnapshot } from "./metrics/leads";
-import { getListContactEmails, getTagContactEmails } from "./sources/activecampaign";
+import {
+  getListContacts,
+  isActiveCampaignConfigured,
+  MEMBERS_LIST_ID,
+} from "./sources/activecampaign";
 import { logger } from "./lib/logger";
 
-const ALUNOS_POA_LIST_ID = "30";
-const FREE_TRIAL_TAG_ID = "401";
-
-export interface AcEmailCacheSizes {
-  tagCount: number;
-  listCount: number;
-}
-
-export async function warmAcEmailCaches(): Promise<AcEmailCacheSizes> {
-  logger.info("Cron: warming AC email caches (tag-401 + list-30)");
-  const [tagEmails, listEmails] = await Promise.all([
-    getTagContactEmails(FREE_TRIAL_TAG_ID),
-    getListContactEmails(ALUNOS_POA_LIST_ID),
-  ]);
-  logger.info(
-    { tagCount: tagEmails.size, listCount: listEmails.size },
-    "Cron: AC email caches warmed"
-  );
-  return { tagCount: tagEmails.size, listCount: listEmails.size };
+/**
+ * Keeps the ActiveCampaign members-list cache warm so the acquisition page never
+ * pays for a full pagination on a user request. The old free-trial tag warm-up
+ * and the daily free-trial snapshot were removed with the free-trial product.
+ */
+export async function warmAcContactCache(): Promise<number> {
+  if (!isActiveCampaignConfigured()) {
+    logger.info("Cron: ActiveCampaign not configured, skipping contact cache warm");
+    return 0;
+  }
+  const contacts = await getListContacts(MEMBERS_LIST_ID);
+  logger.info({ listId: MEMBERS_LIST_ID, count: contacts.length }, "Cron: AC contact cache warmed");
+  return contacts.length;
 }
 
 export function startCronJobs(): void {
-  cron.schedule(
-    "0 3 * * *",
-    async () => {
-      logger.info("Cron: starting daily leads snapshot");
-      try {
-        const snap = await takeLeadsSnapshot();
-        logger.info({ snap }, "Cron: daily leads snapshot complete");
-      } catch (err) {
-        logger.error({ err }, "Cron: daily leads snapshot failed");
-      }
-    },
-    { timezone: "America/Sao_Paulo" }
-  );
-
   cron.schedule("*/15 * * * *", async () => {
     try {
-      await warmAcEmailCaches();
+      await warmAcContactCache();
     } catch (err) {
-      logger.error({ err }, "Cron: AC email cache warm failed");
+      logger.error({ err }, "Cron: AC contact cache warm failed");
     }
   });
 
-  warmAcEmailCaches().catch((err) => {
-    logger.error({ err }, "Cron: initial AC email cache warm failed");
+  warmAcContactCache().catch((err) => {
+    logger.error({ err }, "Cron: initial AC contact cache warm failed");
   });
 
-  logger.info("Cron jobs scheduled (leads snapshot @ 03:00 BRT daily; AC email cache refresh every 15 min)");
+  logger.info("Cron jobs scheduled (AC contact cache refresh every 15 min)");
 }
