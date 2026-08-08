@@ -1,0 +1,46 @@
+Atualize o projeto para o commit 9397563 da branch claude/dashboard-paid-model-kgvb4o,
+que já está no GitHub (psicometriaonline/poa-assinaturas-dashboard). No Shell:
+
+  git fetch origin claude/dashboard-paid-model-kgvb4o
+  git checkout claude/dashboard-paid-model-kgvb4o
+  pnpm install && pnpm run typecheck
+
+CONTEXTO — leia antes de mexer em qualquer métrica:
+
+A Academy não aceita mais cadastros gratuitos. O dashboard foi reescrito para o modelo
+100% pagante. Não existe mais free-trial, funil de cadastro gratuito, contagem de leads
+nem taxa de conversão cadastro → assinante. NÃO REINTRODUZA esses conceitos. Se algo
+parecer faltando (menu Funil, página de Leads, tag 401 do ActiveCampaign, corte de
+março/2026), foi removido de propósito.
+
+Arquivos deletados que devem continuar deletados:
+  artifacts/api-server/src/metrics/conversion.ts
+  artifacts/api-server/src/metrics/leads.ts
+  artifacts/api-server/src/metrics/plan-acquisition.ts
+  artifacts/api-server/src/lib/churn-events.ts
+  artifacts/poa-dashboard/src/pages/Funnel.tsx
+  artifacts/poa-dashboard/src/pages/Leads.tsx
+
+REGRA DE OURO: toda métrica de assinatura sai de
+artifacts/api-server/src/lib/subscription-sql.ts. Não escreva SQL de MRR, churn ou
+assinantes ativos direto numa rota ou página — foi isso que fez o dashboard antigo
+mostrar três taxas de churn diferentes em três telas. Consultas que cortam por tempo
+devem ler o CTE `timeline`, nunca `subs` direto.
+
+BANCO: as migrações rodam sozinhas no boot (lib/migrations.ts). Adicionam colunas
+original_event e date_next_charge, normalizam status PAST_DUE → DELAYED e criam índices.
+Nenhuma tabela é apagada, nenhum dado é perdido.
+
+VARIÁVEIS DE AMBIENTE: nenhuma nova é obrigatória. Opcional: AC_MEMBERS_LIST_ID
+(padrão 30). Se o ActiveCampaign não responder, só a página Aquisição degrada com aviso.
+
+OS NÚMEROS VÃO MUDAR, E ISSO É O ESPERADO. O dashboard antigo estava errado:
+o MRR histórico era acumulado e usava last_event_at (que recebe NOW() a cada evento)
+como data de saída; o churn era dividido pelo total de linhas da tabela, cancelados
+incluídos, então caía sozinho conforme a base crescia. Agora o denominador é a base
+ativa no início do mês — A TAXA DE CHURN VAI APARECER MAIS ALTA, E ESSA É A CORRETA.
+O seletor de período, que era ignorado pela página de receita, agora vale para tudo.
+
+Se aparecer no rodapé da Visão Geral uma nota "N assinaturas encerradas não têm data de
+cancelamento", é informação intencional, não bug: elas ficam fora da série temporal em
+vez de distorcê-la em silêncio.

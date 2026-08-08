@@ -1,2 +1,2 @@
 - [AC pagination](activecampaign-pagination.md) — drive ActiveCampaign pagination by meta.total, not short-page breaks.
-- [MRR history reconciliation](mrr-history-reconciliation.md) — revenue chart must add ALL subs by accession, remove non-active for MRR money, but keep cancellation COUNT on webhook events; reconcile against prod.
+- [MRR reconciliation, paid-only model](mrr-history-reconciliation.md) — all subscription SQL lives in subscription-sql.ts; time slices read the `timeline` CTE; MRR is point-in-time; never reintroduce free-trial/leads/funnel.
