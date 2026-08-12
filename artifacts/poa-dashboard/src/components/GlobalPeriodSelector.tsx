@@ -53,7 +53,8 @@ export function GlobalPeriodSelector() {
 
   return (
     <div className="flex items-center gap-1 min-w-0">
-      <div className="flex items-center gap-0.5 bg-secondary rounded-lg p-1">
+      <div className="overflow-x-auto scrollbar-hide min-w-0 flex-1">
+      <div className="flex items-center gap-0.5 bg-secondary rounded-lg p-1 w-max">
         {QUICK_OPTIONS.map((opt) => (
           <button
             key={opt}
@@ -67,6 +68,7 @@ export function GlobalPeriodSelector() {
             {PERIOD_LABELS[opt]}
           </button>
         ))}
+      </div>
       </div>
 
       {/* Custom date range */}

@@ -41,7 +41,7 @@ function Layout() {
         <header className="sticky top-0 z-20 bg-background/95 backdrop-blur-sm border-b border-border px-3 sm:px-6 py-2.5 flex items-center gap-3 shrink-0">
           <MobileMenuButton onClick={() => setMobileOpen(true)} />
           <span className="text-xs text-muted-foreground hidden lg:block shrink-0">Período de análise</span>
-          <div className="flex-1 overflow-x-auto scrollbar-hide">
+          <div className="flex-1 min-w-0">
             <GlobalPeriodSelector />
           </div>
         </header>
