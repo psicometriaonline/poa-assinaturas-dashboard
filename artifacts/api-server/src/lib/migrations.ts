@@ -9,9 +9,32 @@ export async function runMigrations() {
   await query(`ALTER TABLE hotmart_subscriptions ADD COLUMN IF NOT EXISTS original_event text`);
   await query(`ALTER TABLE hotmart_subscriptions ADD COLUMN IF NOT EXISTS date_next_charge bigint`);
 
-  // The webhook mapper writes DELAYED but the old overview read PAST_DUE, so the
-  // "atrasados" KPI was permanently zero. Normalise to a single status.
-  await query(`UPDATE hotmart_subscriptions SET status = 'DELAYED' WHERE status = 'PAST_DUE'`);
+  // Hotmart's own status vocabulary was being stored verbatim, but only 'ACTIVE'
+  // counts toward MRR. A sale that arrived as STARTED or OVERDUE was therefore
+  // invisible: no MRR, no active count, and no knowable end date, so it was also
+  // dropped from the timeline. Fold the stored values into the four canonical
+  // statuses, preferring what the last event proves about the payment.
+  const repaired = await query<{ subscriber_code: string; status: string }>(
+    `UPDATE hotmart_subscriptions SET status = CASE
+        WHEN last_event IN ('PURCHASE_APPROVED','PURCHASE_COMPLETE','REACTIVATED_PURCHASE','SWITCH_PLAN') THEN 'ACTIVE'
+        WHEN last_event IN ('SUBSCRIPTION_CANCELLATION','PURCHASE_CANCELED','PURCHASE_REFUNDED','PURCHASE_CHARGEBACK') THEN 'CANCELLED'
+        WHEN last_event = 'PURCHASE_EXPIRED' THEN 'INACTIVE'
+        WHEN last_event = 'PURCHASE_DELAYED' THEN 'DELAYED'
+        WHEN status IN ('STARTED','TRIAL') THEN 'ACTIVE'
+        WHEN status IN ('OVERDUE','PAST_DUE') THEN 'DELAYED'
+        WHEN status LIKE 'CANCELLED_BY_%' OR status = 'CANCELED' THEN 'CANCELLED'
+        WHEN status IN ('EXPIRED','ENDED') THEN 'INACTIVE'
+        ELSE status
+      END
+      WHERE status NOT IN ('ACTIVE','CANCELLED','INACTIVE','DELAYED')
+      RETURNING subscriber_code, status`
+  );
+  if (repaired.length > 0) {
+    logger.info(
+      { count: repaired.length, sample: repaired.slice(0, 10) },
+      "Migração: status não-canônicos do Hotmart normalizados"
+    );
+  }
 
   // The point-in-time metrics scan the whole subscription table per month and
   // join webhook events by subscriber; without these the dashboard degrades as

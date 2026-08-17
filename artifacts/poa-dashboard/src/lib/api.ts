@@ -345,6 +345,15 @@ export interface DataCoverageData {
     lastEvent: string | null;
     byEvent: Array<{ event: string; count: number; first: string | null; last: string | null }>;
   };
+  recent: Array<{
+    plan: string;
+    status: string;
+    mrr: number;
+    accession: string | null;
+    lastEvent: string | null;
+    countsTowardMrr: boolean;
+  }>;
+  unknownStatuses: Array<{ status: string; count: number }>;
 }
 
 export const fetchDataCoverage = () => apiFetch<DataCoverageData>("/data-coverage");

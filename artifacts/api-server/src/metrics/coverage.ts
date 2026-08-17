@@ -27,7 +27,24 @@ export interface DataCoverage {
     lastEvent: string | null;
     byEvent: Array<{ event: string; count: number; first: string | null; last: string | null }>;
   };
+  /** Most recent subscriptions — use it to confirm a sale actually landed. */
+  recent: Array<{
+    plan: string;
+    status: string;
+    mrr: number;
+    accession: string | null;
+    lastEvent: string | null;
+    countsTowardMrr: boolean;
+  }>;
+  /**
+   * Statuses outside the four canonical ones. Anything here is a subscription
+   * the metrics cannot classify, so it contributes nothing to MRR — this is the
+   * check that catches a new Hotmart status before it silently costs revenue.
+   */
+  unknownStatuses: Array<{ status: string; count: number }>;
 }
+
+const CANONICAL_STATUSES = ["ACTIVE", "CANCELLED", "INACTIVE", "DELAYED"];
 
 /**
  * Diagnostic endpoint: what the database actually contains, before any clamping.
@@ -36,7 +53,7 @@ export interface DataCoverage {
  * raw table rather than the clamped window, so excluded rows stay countable.
  */
 export async function getDataCoverage(): Promise<DataCoverage> {
-  const [summaryRows, yearRows, eventSummaryRows, eventRows] = await Promise.all([
+  const [summaryRows, yearRows, eventSummaryRows, eventRows, recentRows, unknownRows] = await Promise.all([
     query<{
       total: string;
       first_accession: string | null;
@@ -85,6 +102,35 @@ export async function getDataCoverage(): Promise<DataCoverage> {
        GROUP BY event
        ORDER BY COUNT(*) DESC`
     ),
+
+    // No PII: plan, status, value and dates are enough to recognise a sale.
+    query<{
+      plan_name: string;
+      status: string;
+      mrr: string;
+      accession: string | null;
+      last_event: string | null;
+    }>(
+      `WITH ${BASE_CTES}
+       SELECT
+         s.plan_name,
+         s.status,
+         s.mrr::text AS mrr,
+         to_char(s.started_at AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD') AS accession,
+         h.last_event
+       FROM subs_all s
+       JOIN hotmart_subscriptions h ON h.subscriber_code = s.subscriber_code
+       ORDER BY s.started_at DESC
+       LIMIT 15`
+    ),
+
+    query<{ status: string; count: string }>(
+      `SELECT status, COUNT(*) AS count
+       FROM hotmart_subscriptions
+       WHERE status <> ALL(ARRAY[${CANONICAL_STATUSES.map((x) => `'${x}'`).join(",")}])
+       GROUP BY status
+       ORDER BY COUNT(*) DESC`
+    ),
   ]);
 
   const floorYear = METRICS_FLOOR_ISO.slice(0, 4);
@@ -105,6 +151,15 @@ export async function getDataCoverage(): Promise<DataCoverage> {
       mrr: round2(num(r.mrr)),
       excluded: r.year < floorYear,
     })),
+    recent: recentRows.map((r) => ({
+      plan: r.plan_name,
+      status: r.status,
+      mrr: round2(num(r.mrr)),
+      accession: r.accession,
+      lastEvent: r.last_event,
+      countsTowardMrr: r.status === "ACTIVE",
+    })),
+    unknownStatuses: unknownRows.map((r) => ({ status: r.status, count: int(r.count) })),
     events: {
       total: int(eventSummaryRows[0]?.total),
       firstEvent: eventSummaryRows[0]?.first_event ?? null,

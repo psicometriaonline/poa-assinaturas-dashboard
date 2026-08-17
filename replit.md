@@ -63,6 +63,27 @@ degrau falso no MRR. Quem não tem data de saída confiável fica de fora da sé
 Consequência importante: **"ativo em D" é uma medição direta**, não um acumulado. O último
 ponto da série de MRR é igual ao MRR do snapshot por construção.
 
+### O que move o MRR
+
+O MRR é `SUM(mrr)` sobre `subs WHERE status = 'ACTIVE'`. Uma assinatura só entra na conta
+se as quatro condições valerem: existe linha em `hotmart_subscriptions`, `status = 'ACTIVE'`,
+`accession_date` preenchido e ≥ o piso, e `price_value`/`mrr_contribution` preenchido.
+Anual entra como preço/12, semestral preço/6, mensal preço cheio.
+
+A única coisa que grava essas linhas é o webhook do Hotmart (`upsertSubscriptionFromWebhook`)
+ou o import de planilha. **Sem webhook configurado no Hotmart, uma venda nova não muda nada.**
+
+O status gravado é normalizado por `resolveSubscriptionStatus`: o Hotmart usa
+ACTIVE, INACTIVE, DELAYED, STARTED, OVERDUE, CANCELLED_BY_CUSTOMER/SELLER/ADMIN, e antes
+esse valor cru ia direto para o banco — como só `ACTIVE` conta, uma venda que chegava como
+`STARTED` (boleto/Pix ainda não confirmado no registro da assinatura) ou `OVERDUE`
+sumia do dashboard inteiro. O evento tem prioridade sobre o campo de status: `PURCHASE_APPROVED`
+significa que o dinheiro entrou, mesmo que o payload ainda diga `STARTED`.
+
+Status desconhecido **não** é gravado: a linha mantém o status anterior e um `warn` sai no log.
+`/admin` mostra os status não reconhecidos e as últimas 15 assinaturas registradas — é por
+onde se confirma se uma venda chegou.
+
 ### Métricas disponíveis
 
 | Módulo | Entrega |

@@ -59,6 +59,51 @@ function DataCoveragePanel() {
             {c.events.firstEvent ? ` desde ${c.events.firstEvent}` : ""}
           </p>
 
+          {c.unknownStatuses.length > 0 && (
+            <div className="rounded-lg border border-[#d03b3b]/40 bg-[#d03b3b]/10 p-3 text-xs">
+              <p className="font-medium text-[#d03b3b]">
+                Status não reconhecidos — estas assinaturas não entram em nenhuma métrica
+              </p>
+              <ul className="mt-1 text-muted-foreground">
+                {c.unknownStatuses.map((u) => (
+                  <li key={u.status}>
+                    <span className="text-foreground">{u.status}</span>: {formatNumber(u.count)}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <div>
+            <p className="text-xs font-medium text-foreground mb-2">Últimas assinaturas registradas</p>
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-muted-foreground text-left border-b border-border">
+                  <th className="pb-2 font-medium">Adesão</th>
+                  <th className="pb-2 font-medium">Plano</th>
+                  <th className="pb-2 font-medium">Situação</th>
+                  <th className="pb-2 font-medium text-right">MRR</th>
+                  <th className="pb-2 font-medium">Último evento</th>
+                </tr>
+              </thead>
+              <tbody>
+                {c.recent.map((r, i) => (
+                  <tr key={`${r.accession}-${i}`} className="border-b border-border/50">
+                    <td className="py-1.5">{r.accession ?? "—"}</td>
+                    <td className="py-1.5 truncate max-w-[10rem]">{r.plan}</td>
+                    <td className={`py-1.5 ${r.countsTowardMrr ? "text-[#0ca30c]" : "text-[#fab219]"}`}>
+                      {r.status}
+                    </td>
+                    <td className="py-1.5 text-right tabular-nums">{formatBRL(r.mrr)}</td>
+                    <td className="py-1.5 text-muted-foreground truncate max-w-[10rem]">
+                      {r.lastEvent ?? "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
           <table className="w-full text-xs">
             <thead>
               <tr className="text-muted-foreground text-left border-b border-border">
