@@ -13,23 +13,11 @@ import { KPICard } from "@/components/KPICard";
 import { PageHeader, Panel, ErrorBanner } from "@/components/Panel";
 import { GranularityToggle } from "@/components/GranularityToggle";
 import { defaultGranularity, rollUpByYear, type Granularity } from "@/lib/time-grouping";
-import {
-  CHROME,
-  POLARITY,
-  SERIES,
-  axisTick,
-  legendStyle,
-  seriesColor,
-  tooltipProps,
-} from "@/lib/chart-theme";
+import { CHROME, SERIES, axisTick, seriesColor, tooltipProps } from "@/lib/chart-theme";
 import {
   Area,
   AreaChart,
-  Bar,
-  BarChart,
   CartesianGrid,
-  Cell,
-  Legend,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -57,18 +45,8 @@ export default function Revenue() {
   const effectiveGranularity = granularity ?? defaultGranularity(history.length);
   const byYear = effectiveGranularity === "ano";
 
-  const movementData = useMemo(() => {
-    const rows = history.map((h) => ({
-      monthKey: h.monthKey,
-      label: h.month,
-      "Novo MRR": h.newMrr,
-      "MRR cancelado": -h.churnedMrr,
-    }));
-    return byYear ? rollUpByYear(rows, ["Novo MRR", "MRR cancelado"]) : rows;
-  }, [history, byYear]);
-
   // MRR and ARR are stocks: rolled up to a year they take the closing value,
-  // never a sum. Billings is a flow and is summed.
+  // never summed across months.
   const scaleData = useMemo(() => {
     const rows = history.map((h) => ({
       monthKey: h.monthKey,
@@ -77,15 +55,6 @@ export default function Revenue() {
       arr: h.arr,
     }));
     return byYear ? rollUpByYear(rows, [], ["mrr", "arr"]) : rows;
-  }, [history, byYear]);
-
-  const billingsData = useMemo(() => {
-    const rows = history.map((h) => ({
-      monthKey: h.monthKey,
-      label: h.month,
-      billings: h.billings,
-    }));
-    return byYear ? rollUpByYear(rows, ["billings"]) : rows;
   }, [history, byYear]);
 
   return (
@@ -226,122 +195,12 @@ export default function Revenue() {
         </ResponsiveContainer>
       </Panel>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 sm:gap-4">
-        <Panel
-          title="Movimentação de MRR"
-          description={byYear ? "Quanto entrou e saiu em cada ano" : "Quanto entrou e saiu em cada mês"}
-          loading={isLoading}
-          isEmpty={movementData.length === 0}
-          action={<GranularityToggle value={effectiveGranularity} onChange={setGranularity} />}
-        >
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={movementData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={CHROME.grid} />
-              <XAxis dataKey="label" tick={axisTick} axisLine={false} tickLine={false} />
-              <YAxis
-                tick={axisTick}
-                axisLine={false}
-                tickLine={false}
-                tickFormatter={(v: number) => formatBRLShort(Math.abs(v))}
-              />
-              <Tooltip
-                {...tooltipProps}
-                formatter={(v: number, name: string) => [formatBRL(Math.abs(v)), name]}
-              />
-              <Legend wrapperStyle={legendStyle} />
-              <Bar
-                dataKey="Novo MRR"
-                fill={POLARITY.positive}
-                maxBarSize={40}
-                radius={[4, 4, 0, 0]}
-                stroke={CHROME.surface}
-                strokeWidth={2}
-              />
-              <Bar
-                dataKey="MRR cancelado"
-                fill={POLARITY.negative}
-                maxBarSize={40}
-                radius={[0, 0, 4, 4]}
-                stroke={CHROME.surface}
-                strokeWidth={2}
-              />
-            </BarChart>
-          </ResponsiveContainer>
-        </Panel>
-
-        <Panel
-          title={byYear ? "Caixa recebido por ano" : "Caixa recebido por mês"}
-          description="Cobranças aprovadas — dinheiro que entrou, não receita reconhecida"
-          loading={isLoading}
-          isEmpty={billingsData.every((h) => h.billings === 0)}
-          emptyMessage="Sem cobranças registradas via webhook no período"
-        >
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={billingsData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={CHROME.grid} />
-              <XAxis dataKey="label" tick={axisTick} axisLine={false} tickLine={false} />
-              <YAxis tick={axisTick} axisLine={false} tickLine={false} tickFormatter={formatBRLShort} />
-              <Tooltip {...tooltipProps} formatter={(v: number) => [formatBRL(v), "Caixa"]} />
-              <Bar
-                dataKey="billings"
-                fill={SERIES[1]}
-                maxBarSize={40}
-                radius={[4, 4, 0, 0]}
-                stroke={CHROME.surface}
-                strokeWidth={2}
-              />
-            </BarChart>
-          </ResponsiveContainer>
-        </Panel>
-      </div>
-
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 sm:gap-4">
-        <Panel
-          title="MRR por plano"
-          description={d ? `${formatBRL(d.mrr)} distribuídos entre ${d.byPlan.length} planos` : undefined}
-          loading={isLoading}
-          isEmpty={(d?.byPlan.length ?? 0) === 0}
-          height={Math.max(220, (d?.byPlan.length ?? 3) * 46)}
-        >
-          <ResponsiveContainer width="100%" height={Math.max(220, (d?.byPlan.length ?? 3) * 46)}>
-            <BarChart
-              data={d?.byPlan ?? []}
-              layout="vertical"
-              margin={{ top: 4, right: 24, left: 8, bottom: 4 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke={CHROME.grid} horizontal={false} />
-              <XAxis
-                type="number"
-                tick={axisTick}
-                axisLine={false}
-                tickLine={false}
-                tickFormatter={formatBRLShort}
-              />
-              <YAxis
-                type="category"
-                dataKey="plan"
-                width={170}
-                tick={axisTick}
-                axisLine={false}
-                tickLine={false}
-                tickFormatter={(v: string) => (v.length > 26 ? `${v.slice(0, 26)}…` : v)}
-              />
-              <Tooltip {...tooltipProps} formatter={(v: number) => [formatBRL(v), "MRR"]} />
-              <Bar dataKey="mrr" maxBarSize={28} radius={[0, 4, 4, 0]}>
-                {(d?.byPlan ?? []).map((entry, i) => (
-                  <Cell key={entry.plan} fill={seriesColor(i)} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </Panel>
-
-        <Panel
-          title="MRR por periodicidade"
-          description={d ? `${formatPct(d.annualMrrShare)} do MRR está em contratos anuais` : undefined}
-          loading={isLoading}
-          isEmpty={(d?.byInterval.length ?? 0) === 0}
-        >
+      <Panel
+        title="MRR por periodicidade"
+        description={d ? `${formatPct(d.annualMrrShare)} do MRR está em contratos anuais` : undefined}
+        loading={isLoading}
+        isEmpty={(d?.byInterval.length ?? 0) === 0}
+      >
           <div className="space-y-4">
             {(d?.byInterval ?? []).map((row, i) => (
               <div key={row.label} className="space-y-1.5">
@@ -366,8 +225,7 @@ export default function Revenue() {
               </div>
             ))}
           </div>
-        </Panel>
-      </div>
+      </Panel>
 
       {d && d.byPlan.length > 0 && (
         <div className="bg-card border border-card-border rounded-xl p-4 sm:p-5">

@@ -6,21 +6,46 @@ export function isUmamiConfigured(): boolean {
 }
 
 function getConfig() {
-  const baseUrl = (process.env.UMAMI_BASE_URL || "https://api.umami.is").replace(/\/$/, "");
+  const baseUrl = (process.env.UMAMI_BASE_URL || "https://api.umami.is").replace(/\/+$/, "");
   const token = process.env.UMAMI_API_TOKEN || "";
   const websiteId = process.env.UMAMI_WEBSITE_ID || "";
   return { baseUrl, token, websiteId };
 }
 
+/**
+ * Where the API actually lives.
+ *
+ * Umami Cloud serves `/v1`, self-hosted serves `/api`. The old code appended `/v1`
+ * to anything that did not already end in `/api`, so a self-hosted install was
+ * queried on the wrong path, and pasting the endpoint Umami's own docs give
+ * (`https://api.umami.is/v1`) produced `https://api.umami.is/v1/v1`.
+ */
+export function resolveApiBase(baseUrl: string): string {
+  const trimmed = baseUrl.replace(/\/+$/, "");
+  if (/\/(v1|api)$/.test(trimmed)) return trimmed;
+  let host = "";
+  try {
+    host = new URL(trimmed).hostname;
+  } catch {
+    return `${trimmed}/v1`;
+  }
+  return /(^|\.)umami\.is$/i.test(host) ? `${trimmed}/v1` : `${trimmed}/api`;
+}
+
 async function umamiFetch(path: string, params: Record<string, string> = {}): Promise<unknown> {
   const { baseUrl, token } = getConfig();
-  const apiBase = baseUrl.endsWith("/api") ? baseUrl : `${baseUrl}/v1`;
-  const url = new URL(`${apiBase}${path}`);
+  const url = new URL(`${resolveApiBase(baseUrl)}${path}`);
   Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
 
   const response = await fetch(url.toString(), {
     headers: {
+      // Umami Cloud authenticates with x-umami-api-key; self-hosted uses a bearer
+      // token. Only Bearer was being sent, so every Cloud call came back 401 and
+      // the traffic page rendered zeros. Each install ignores the header it does
+      // not use, so sending both is what makes one config work for either.
+      "x-umami-api-key": token,
       Authorization: `Bearer ${token}`,
+      Accept: "application/json",
       "Content-Type": "application/json",
     },
   });

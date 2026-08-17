@@ -12,6 +12,7 @@ import { usePeriod } from "@/context/PeriodContext";
 import { KPICard } from "@/components/KPICard";
 import { PageHeader, Panel, ErrorBanner } from "@/components/Panel";
 import { GranularityToggle } from "@/components/GranularityToggle";
+import { NetChangeChart } from "@/components/NetChangeChart";
 import { defaultGranularity, rollUpByYear, type Granularity } from "@/lib/time-grouping";
 import { POLARITY, SERIES, axisTick, legendStyle, tooltipProps, CHROME } from "@/lib/chart-theme";
 import {
@@ -46,18 +47,6 @@ export default function Overview() {
   // Long windows therefore default to yearly buckets, still switchable by hand.
   const [granularity, setGranularity] = useState<Granularity | null>(null);
   const effectiveGranularity = granularity ?? defaultGranularity(history.length);
-
-  const movementData = useMemo(() => {
-    const rows = history.map((h) => ({
-      monthKey: h.monthKey,
-      label: h.month,
-      Novas: h.newSubs,
-      Cancelamentos: -h.churnedSubs,
-    }));
-    return effectiveGranularity === "ano"
-      ? rollUpByYear(rows, ["Novas", "Cancelamentos"])
-      : rows;
-  }, [history, effectiveGranularity]);
 
   const mrrChartData = useMemo(() => {
     const rows = history.map((h) => ({ monthKey: h.monthKey, label: h.month, mrr: h.mrr }));
@@ -287,48 +276,14 @@ export default function Overview() {
           </ResponsiveContainer>
         </Panel>
 
-        <Panel
-          title="Novas assinaturas vs. cancelamentos"
-          description="Cancelamentos abaixo da linha zero"
+        <NetChangeChart
+          data={history.map((h) => ({
+            monthKey: h.monthKey,
+            newSubs: h.newSubs,
+            churnedSubs: h.churnedSubs,
+          }))}
           loading={isLoading}
-          isEmpty={movementData.length === 0}
-          action={<GranularityToggle value={effectiveGranularity} onChange={setGranularity} />}
-        >
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={movementData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={CHROME.grid} />
-              <XAxis dataKey="label" tick={axisTick} axisLine={false} tickLine={false} />
-              <YAxis
-                tick={axisTick}
-                axisLine={false}
-                tickLine={false}
-                allowDecimals={false}
-                tickFormatter={(v: number) => formatNumber(Math.abs(v))}
-              />
-              <Tooltip
-                {...tooltipProps}
-                formatter={(v: number, name: string) => [formatNumber(Math.abs(v)), name]}
-              />
-              <Legend wrapperStyle={legendStyle} />
-              <Bar
-                dataKey="Novas"
-                fill={POLARITY.positive}
-                maxBarSize={40}
-                radius={[4, 4, 0, 0]}
-                stroke={CHROME.surface}
-                strokeWidth={2}
-              />
-              <Bar
-                dataKey="Cancelamentos"
-                fill={POLARITY.negative}
-                maxBarSize={40}
-                radius={[0, 0, 4, 4]}
-                stroke={CHROME.surface}
-                strokeWidth={2}
-              />
-            </BarChart>
-          </ResponsiveContainer>
-        </Panel>
+        />
       </div>
 
       {d && d.dataQuality.undatedExits > 0 && (

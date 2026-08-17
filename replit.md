@@ -136,8 +136,8 @@ In-memory com TTL de 1 hora (tráfego: 5 min; contatos do ActiveCampaign: 15 min
 
 | Rota | Página | Conteúdo |
 |------|--------|----------|
-| `/` | Visão Geral | KPIs agrupados em receita, base, retenção e risco |
-| `/revenue` | Receita | MRR/ARR, movimentação de MRR, caixa, mix por plano, tabela mensal |
+| `/` | Visão Geral | KPIs agrupados em receita, base, retenção e risco; evolução do MRR e variação líquida de assinaturas (barra única por período, acima/abaixo de zero, com filtro ano ou mês de um ano escolhido) |
+| `/revenue` | Receita | MRR/ARR, mix por periodicidade, detalhe por plano, tabela mensal |
 | `/subscriptions` | Assinaturas | base ao longo do tempo, mix de aquisição, tempo de casa, renovações |
 | `/retention` | Churn & Retenção | churn, motivo, coortes, NRR mensal, churn por plano |
 | `/acquisition` | Aquisição | origem UTM das assinaturas pagas (source → medium → campaign) |
@@ -171,7 +171,11 @@ reservados para polaridade (entrou × saiu) e sempre vêm com rótulo.
    preenchido — a página mostra a taxa de cobertura explicitamente.
 6. `status=CANCELLED` na API do Hotmart retorna 400 para estas credenciais; os dados de
    cancelamento vêm dos webhooks e da planilha importada.
-7. **Tráfego** depende do Umami. Janelas longas são consultadas com `unit=month` —
+7. **Tráfego** depende do Umami. A autenticação usa `x-umami-api-key` (Umami Cloud) e
+   `Authorization: Bearer` (self-hosted) — os dois cabeçalhos vão juntos, cada instalação
+   ignora o que não usa. `UMAMI_BASE_URL` aceita tanto `https://api.umami.is` quanto
+   `https://api.umami.is/v1`; o caminho da API (`/v1` no Cloud, `/api` no self-hosted) é
+   resolvido em `resolveApiBase`. Janelas longas são consultadas com `unit=month` —
    pedir `unit=day` em vários anos fazia a API devolver milhares de buckets ou recusar
    a chamada, e a página ficava zerada. Falhas agora aparecem na tela em vez de virarem
    zeros silenciosos.
